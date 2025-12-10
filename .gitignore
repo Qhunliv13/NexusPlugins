@@ -1,0 +1,11 @@
+# 编译产物 / Build artifacts
+*.obj
+*.exe
+*.dll
+*.so
+*.lib
+*.log
+
+# SCons 构建文件 / SCons build files
+.sconsign.dblite
+

@@ -1,0 +1,88 @@
+# SCons构建文件用于指针传递插件 / SCons Build File for Pointer Transfer Plugin / SCons-Builddatei für Zeigerübertragungs-Plugin
+
+import os
+
+env = Environment()
+
+# 编译器设置 / Compiler settings / Compiler-Einstellungen
+if os.name == 'nt':
+    env['CC'] = 'cl'
+    env['CXX'] = 'cl'
+    env['CCFLAGS'] = ['/W4', '/O2', '/utf-8', '/LD']
+    # /OPT:REF: 移除未引用的函数和数据 / Remove unreferenced functions and data / Nicht referenzierte Funktionen und Daten entfernen
+    # /OPT:ICF: 合并相同的函数 / Merge identical functions / Identische Funktionen zusammenführen
+    env['LINKFLAGS'] = ['/NOEXP', '/OPT:REF', '/OPT:ICF']
+    
+    # 清理不需要的文件 / Clean up unnecessary files / Unnötige Dateien bereinigen
+    def cleanup_build_files(target, source, env):
+        import os
+        base_name = str(target[0]).replace('.dll', '')
+        exp_file = base_name + '.exp'
+        lib_file = base_name + '.lib'
+        if os.path.exists(exp_file):
+            try:
+                os.remove(exp_file)
+            except:
+                pass
+        if os.path.exists(lib_file):
+            try:
+                os.remove(lib_file)
+            except:
+                pass
+    
+    env.AddPostAction('../../plugins/pointer_transfer_plugin.dll', cleanup_build_files)
+else:
+    env['CC'] = 'gcc'
+    env['CXX'] = 'g++'
+    # -ffunction-sections: 每个函数放在独立段 / Place each function in separate section / Jede Funktion in separaten Abschnitt platzieren
+    # -fdata-sections: 每个数据放在独立段 / Place each data in separate section / Jede Daten in separaten Abschnitt platzieren
+    env['CCFLAGS'] = ['-Wall', '-Wextra', '-O2', '-std=c99', '-fPIC', '-shared', '-ffunction-sections', '-fdata-sections']
+    # -Wl,--gc-sections: 链接时移除未使用的段 / Remove unused sections during linking / Nicht verwendete Abschnitte beim Verlinken entfernen
+    env['LINKFLAGS'] = ['-shared', '-Wl,--gc-sections']
+
+# 源文件 / Source files / Quelldateien
+source = [
+    'pointer_transfer_plugin.c',
+    'pointer_transfer_utils.c',
+    'pointer_transfer_context.c',
+    'pointer_transfer_config.c',
+    'pointer_transfer_plugin_loader.c',
+    'pointer_transfer_interface.c',
+    'pointer_transfer_platform.c',
+    'pointer_transfer_currying.c'  # 柯里化实现替代汇编 / Currying implementation replaces assembly / Currying-Implementierung ersetzt Assembler
+]
+
+# 输出路径 / Output path / Ausgabepfad
+if os.name == 'nt':
+    output_name = '../../plugins/pointer_transfer_plugin.dll'
+else:
+    output_name = '../../plugins/pointer_transfer_plugin.so'
+
+# 创建动态库 / Create dynamic library / Dynamische Bibliothek erstellen
+plugin = env.SharedLibrary(output_name, source)
+
+# 集成测试程序 / Integration test program
+integration_test_source = [
+    'test_integration.c',
+    'pointer_transfer_plugin.c',
+    'pointer_transfer_utils.c',
+    'pointer_transfer_context.c',
+    'pointer_transfer_config.c',
+    'pointer_transfer_plugin_loader.c',
+    'pointer_transfer_interface.c',
+    'pointer_transfer_platform.c',
+    'pointer_transfer_currying.c'  # 柯里化实现替代汇编 / Currying implementation replaces assembly / Currying-Implementierung ersetzt Assembler
+]
+env.Program('test_integration', integration_test_source)
+
+# 测试插件 / Test plugin
+test_plugin_source = ['test_plugin.c']
+if os.name == 'nt':
+    test_plugin_output = 'test_plugin.dll'
+else:
+    test_plugin_output = 'test_plugin.so'
+env.SharedLibrary(test_plugin_output, test_plugin_source)
+
+# 默认目标 / Default target / Standardziel
+Default(plugin)
+
