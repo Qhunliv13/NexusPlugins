@@ -13,21 +13,6 @@
 #include <windows.h>
 #else
 #include <dlfcn.h>
-#include <signal.h>
-#include <setjmp.h>
-
-/* 信号处理跳转缓冲区 / Signal handling jump buffer / Sprungpuffer für Signalbehandlung */
-static sigjmp_buf g_jmp_buf;
-static volatile int g_signal_caught = 0;
-
-/**
- * @brief 信号处理函数 / Signal handler function / Signalhandler-Funktion
- */
-static void signal_handler(int sig) {
-    (void)sig;
-    g_signal_caught = 1;
-    siglongjmp(g_jmp_buf, 1);
-}
 #endif
 
 #include "pointer_transfer_currying.h"
@@ -79,15 +64,65 @@ int32_t pt_platform_close_library(void* handle) {
 
 /**
  * @brief 动态函数调用 / Dynamic function call / Dynamischer Funktionsaufruf
+ * @details 通过静态验证预防错误，不使用异常处理 / Prevents errors through static validation, no exception handling / Verhindert Fehler durch statische Validierung, keine Ausnahmebehandlung
  */
 static int32_t call_function_dynamic(void* func_ptr, int param_count, nxld_param_type_t* param_types, void** param_values, size_t* param_sizes,
                                       pt_return_type_t return_type, size_t return_size, int64_t* result_int, double* result_float, void* result_struct) {
-    if (func_ptr == NULL || param_count < 0 || param_values == NULL || result_int == NULL || result_float == NULL) {
+    /* 静态参数验证 / Static parameter validation / Statische Parametervalidierung */
+    if (func_ptr == NULL) {
         return -1;
+    }
+    if (param_count < 0) {
+        return -1;
+    }
+    if (param_count > 0 && (param_types == NULL || param_values == NULL)) {
+        return -1;
+    }
+    if (result_int == NULL || result_float == NULL) {
+        return -1;
+    }
+    
+    /* 验证参数类型数组的有效性 / Validate parameter types array validity / Gültigkeit des Parametertyp-Arrays validieren */
+    if (param_count > 0) {
+        for (int i = 0; i < param_count; i++) {
+            if (param_types[i] < NXLD_PARAM_TYPE_VOID || param_types[i] > NXLD_PARAM_TYPE_UNKNOWN) {
+                return -1;
+            }
+            /* 验证指针类型参数的大小 / Validate size for pointer type parameters / Größe für Zeigertyp-Parameter validieren */
+            if ((param_types[i] == NXLD_PARAM_TYPE_POINTER || 
+                 param_types[i] == NXLD_PARAM_TYPE_STRING ||
+                 param_types[i] == NXLD_PARAM_TYPE_ANY) && 
+                param_sizes != NULL && param_sizes[i] == 0 && param_values[i] != NULL) {
+                return -1;
+            }
+        }
+    }
+    
+    /* 验证返回值类型 / Validate return type / Rückgabetyp validieren */
+    if (return_type < PT_RETURN_TYPE_INTEGER || return_type > PT_RETURN_TYPE_STRUCT_VAL) {
+        return -1;
+    }
+    
+    /* 验证结构体返回值缓冲区 / Validate struct return value buffer / Struktur-Rückgabewert-Puffer validieren */
+    /* PT_RETURN_TYPE_STRUCT_PTR: 小结构体通过指针返回（RAX包含指针），return_size和result_struct可选 / Small struct returned via pointer (RAX contains pointer), return_size and result_struct optional / Kleine Struktur über Zeiger zurückgegeben (RAX enthält Zeiger), return_size und result_struct optional */
+    /* PT_RETURN_TYPE_STRUCT_VAL: 大结构体通过隐藏指针参数返回，需要return_size和result_struct / Large struct returned via hidden pointer parameter, requires return_size and result_struct / Große Struktur über versteckten Zeigerparameter zurückgegeben, benötigt return_size und result_struct */
+    if (return_type == PT_RETURN_TYPE_STRUCT_VAL) {
+        if (return_size == 0) {
+            return -1;
+        }
+        if (result_struct == NULL) {
+            return -1;
+        }
     }
     
     pt_param_pack_t* pack = pt_create_param_pack(param_count, param_types, param_values, param_sizes);
     if (pack == NULL) {
+        return -1;
+    }
+    
+    /* 验证参数包 / Validate parameter pack / Parameterpaket validieren */
+    if (pt_validate_param_pack(pack) != 0) {
+        pt_free_param_pack(pack);
         return -1;
     }
     
@@ -98,49 +133,13 @@ static int32_t call_function_dynamic(void* func_ptr, int param_count, nxld_param
 }
 
 /**
- * @brief 带异常处理的函数调用 / Function call with exception handling / Funktionsaufruf mit Ausnahmebehandlung
+ * @brief 平台函数调用（通过静态验证预防错误）/ Platform function call (prevent errors through static validation) / Plattform-Funktionsaufruf (Fehler durch statische Validierung verhindern)
+ * @details 通过严格的参数验证和静态检查预防错误，不使用异常处理机制 / Prevents errors through strict parameter validation and static checks, no exception handling mechanism / Verhindert Fehler durch strenge Parametervalidierung und statische Prüfungen, kein Ausnahmebehandlungsmechanismus
  */
 int32_t pt_platform_safe_call(void* func_ptr, int param_count, void* param_types, void** param_values, void* param_sizes,
                                pt_return_type_t return_type, size_t return_size, int64_t* result_int, double* result_float, void* result_struct) {
-    if (func_ptr == NULL || result_int == NULL || result_float == NULL) {
-        return -1;
-    }
-    
-#ifdef _WIN32
-    __try {
-        return call_function_dynamic(func_ptr, param_count, (nxld_param_type_t*)param_types, param_values, (size_t*)param_sizes,
-                                     return_type, return_size, result_int, result_float, result_struct);
-    } __except(EXCEPTION_EXECUTE_HANDLER) {
-        *result_int = 0;
-        *result_float = 0.0;
-        return -1;
-    }
-#else
-    struct sigaction old_action;
-    struct sigaction new_action;
-    
-    memset(&new_action, 0, sizeof(new_action));
-    new_action.sa_handler = signal_handler;
-    sigemptyset(&new_action.sa_mask);
-    new_action.sa_flags = SA_NODEFER;
-    
-    if (sigaction(SIGSEGV, &new_action, &old_action) != 0) {
-        return call_function_dynamic(func_ptr, param_count, (nxld_param_type_t*)param_types, param_values, (size_t*)param_sizes,
-                                     return_type, return_size, result_int, result_float, result_struct);
-    }
-    
-    g_signal_caught = 0;
-    if (sigsetjmp(g_jmp_buf, 1) == 0) {
-        int32_t ret = call_function_dynamic(func_ptr, param_count, (nxld_param_type_t*)param_types, param_values, (size_t*)param_sizes,
-                                             return_type, return_size, result_int, result_float, result_struct);
-        sigaction(SIGSEGV, &old_action, NULL);
-        return ret;
-    } else {
-        sigaction(SIGSEGV, &old_action, NULL);
-        *result_int = 0;
-        *result_float = 0.0;
-        return -1;
-    }
-#endif
+    /* 直接调用动态函数，内部已包含完整的静态验证 / Directly call dynamic function, which includes complete static validation / Direkter Aufruf der dynamischen Funktion, die vollständige statische Validierung enthält */
+    return call_function_dynamic(func_ptr, param_count, (nxld_param_type_t*)param_types, param_values, (size_t*)param_sizes,
+                                 return_type, return_size, result_int, result_float, result_struct);
 }
 

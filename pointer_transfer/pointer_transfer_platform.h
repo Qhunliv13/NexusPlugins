@@ -38,7 +38,7 @@ void* pt_platform_get_symbol(void* handle, const char* symbol_name);
 int32_t pt_platform_close_library(void* handle);
 
 /**
- * @brief 带异常处理的函数调用 / Function call with exception handling / Funktionsaufruf mit Ausnahmebehandlung
+ * @brief 平台函数调用（通过静态验证预防错误）/ Platform function call (prevent errors through static validation) / Plattform-Funktionsaufruf (Fehler durch statische Validierung verhindern)
  * @param func_ptr 函数指针 / Function pointer / Funktionszeiger
  * @param param_count 参数数量 / Parameter count / Parameteranzahl
  * @param param_types 参数类型数组 / Parameter types array / Parametertyp-Array
@@ -49,7 +49,8 @@ int32_t pt_platform_close_library(void* handle);
  * @param result_int 输出整数返回值指针 / Output integer return value pointer / Ausgabe-Integer-Rückgabewert-Zeiger
  * @param result_float 输出浮点返回值指针 / Output floating-point return value pointer / Ausgabe-Gleitkomma-Rückgabewert-Zeiger
  * @param result_struct 输出结构体返回值缓冲区，可为NULL / Output struct return value buffer, can be NULL / Ausgabe-Struktur-Rückgabewert-Puffer, kann NULL sein
- * @return 成功返回0，异常或错误返回非0 / Returns 0 on success, non-zero on exception or error / Gibt 0 bei Erfolg zurück, ungleich 0 bei Ausnahme oder Fehler
+ * @return 成功返回0，错误返回非0 / Returns 0 on success, non-zero on error / Gibt 0 bei Erfolg zurück, ungleich 0 bei Fehler
+ * @details 通过严格的参数验证和静态检查预防错误，不使用异常处理机制 / Prevents errors through strict parameter validation and static checks, no exception handling mechanism / Verhindert Fehler durch strenge Parametervalidierung und statische Prüfungen, kein Ausnahmebehandlungsmechanismus
  */
 int32_t pt_platform_safe_call(void* func_ptr, int param_count, void* param_types, void** param_values, void* param_sizes,
                                pt_return_type_t return_type, size_t return_size, int64_t* result_int, double* result_float, void* result_struct);

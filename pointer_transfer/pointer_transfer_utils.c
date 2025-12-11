@@ -431,6 +431,16 @@ int set_parameter_value_from_pointer(struct target_interface_state_s* state, int
                 interface_name != NULL ? interface_name : "unknown", (char)typed_state->param_int_values[param_index]);
             return 1;
         }
+        case NXLD_PARAM_TYPE_POINTER:
+        case NXLD_PARAM_TYPE_STRING: {
+            typed_state->param_values[param_index] = ptr;
+            typed_state->param_ready[param_index] = 1;
+            typed_state->param_sizes[param_index] = stored_size > 0 ? stored_size : sizeof(void*);
+            internal_log_write("INFO", "Stored parameter %d for %s.%s (type=%d, size=%zu)", 
+                param_index, plugin_name != NULL ? plugin_name : "unknown", 
+                interface_name != NULL ? interface_name : "unknown", param_type, typed_state->param_sizes[param_index]);
+            return 1;
+        }
         case NXLD_PARAM_TYPE_VARIADIC:
         case NXLD_PARAM_TYPE_ANY:
         case NXLD_PARAM_TYPE_UNKNOWN: {
@@ -485,6 +495,11 @@ pt_return_type_t infer_return_type_from_description(const char* description) {
     } else if (strstr(desc_lower, "return double") != NULL || strstr(desc_lower, "returns double") != NULL ||
                strstr(desc_lower, "返回double") != NULL || strstr(desc_lower, "返回双精度") != NULL) {
         return_type = PT_RETURN_TYPE_DOUBLE;
+    } else if (strstr(desc_lower, "return string pointer") != NULL || strstr(desc_lower, "returns string pointer") != NULL ||
+               strstr(desc_lower, "return string") != NULL || strstr(desc_lower, "returns string") != NULL ||
+               strstr(desc_lower, "返回字符串指针") != NULL || strstr(desc_lower, "返回字符串") != NULL ||
+               strstr(desc_lower, "返回string") != NULL) {
+        return_type = PT_RETURN_TYPE_STRUCT_PTR;
     } else if (strstr(desc_lower, "return struct") != NULL || strstr(desc_lower, "returns struct") != NULL ||
                strstr(desc_lower, "返回结构") != NULL) {
         return_type = PT_RETURN_TYPE_STRUCT_PTR;

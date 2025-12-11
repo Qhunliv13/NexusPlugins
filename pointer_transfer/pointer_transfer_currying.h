@@ -70,6 +70,12 @@ void* pt_serialize_param_pack(pt_param_pack_t* pack);
 pt_param_pack_t* pt_deserialize_param_pack(void* data);
 
 /**
+ * @brief 释放序列化的参数包 / Free serialized parameter pack / Serialisiertes Parameterpaket freigeben
+ * @param data 序列化数据指针（由pt_serialize_param_pack返回）/ Serialized data pointer (returned by pt_serialize_param_pack) / Serialisierter Datenzeiger (von pt_serialize_param_pack zurückgegeben)
+ */
+void pt_free_serialized_param_pack(void* data);
+
+/**
  * @brief 验证参数包结构符合ABI约定 / Validate parameter pack structure conforms to ABI convention / Parameterpaket-Strukturvalidierung gemäß ABI-Konvention
  * @param pack 参数包指针 / Parameter pack pointer / Parameterpaket-Zeiger
  * @return 有效返回0，无效返回-1 / Returns 0 if valid, -1 if invalid / Gibt 0 zurück wenn gültig, -1 wenn ungültig

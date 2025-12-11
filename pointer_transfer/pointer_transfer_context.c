@@ -18,7 +18,7 @@ static pointer_transfer_context_t g_context = {
     NULL, 0, 0, NULL, 0, 0,
     NULL, NULL, 0, 0,
     NULL, 0, 0,
-    NULL, NULL, NULL
+    NULL, NULL, NULL, NULL
 };
 
 /**
@@ -98,6 +98,9 @@ void free_transfer_rules(void) {
     ctx->rule_count = 0;
     ctx->rule_capacity = 0;
     
+    /* TODO: 待实现rule_index构建功能后，此处的释放代码才会真正生效
+     * 当前rule_index始终为NULL，此代码为预留的清理逻辑
+     */
     if (ctx->rule_index != NULL) {
         for (size_t i = 0; i < ctx->rule_index_count; i++) {
             if (ctx->rule_index[i].key != NULL) {
@@ -206,6 +209,10 @@ void cleanup_context(void) {
     if (ctx->entry_nxpt_path != NULL) {
         free(ctx->entry_nxpt_path);
         ctx->entry_nxpt_path = NULL;
+    }
+    if (ctx->entry_auto_run_interface != NULL) {
+        free(ctx->entry_auto_run_interface);
+        ctx->entry_auto_run_interface = NULL;
     }
     if (ctx->loaded_nxpt_files != NULL) {
         for (size_t i = 0; i < ctx->loaded_nxpt_count; i++) {

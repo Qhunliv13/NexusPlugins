@@ -1,0 +1,55 @@
+# SCons构建文件用于加法插件 / SCons Build File for Addition Plugin / SCons-Builddatei für Additions-Plugin
+
+import os
+
+env = Environment()
+
+# 编译器设置 / Compiler settings / Compiler-Einstellungen
+if os.name == 'nt':
+    env['CC'] = 'cl'
+    env['CXX'] = 'cl'
+    env['CCFLAGS'] = ['/W4', '/O2', '/utf-8', '/LD']
+    env['LINKFLAGS'] = ['/NOEXP', '/OPT:REF', '/OPT:ICF']
+    
+    # 清理不需要的文件 / Clean up unnecessary files / Unnötige Dateien bereinigen
+    def cleanup_build_files(target, source, env):
+        import os
+        base_name = str(target[0]).replace('.dll', '')
+        exp_file = base_name + '.exp'
+        lib_file = base_name + '.lib'
+        if os.path.exists(exp_file):
+            try:
+                os.remove(exp_file)
+            except:
+                pass
+        if os.path.exists(lib_file):
+            try:
+                os.remove(lib_file)
+            except:
+                pass
+    
+    env.AddPostAction('../../plugins/add_plugin.dll', cleanup_build_files)
+else:
+    env['CC'] = 'gcc'
+    env['CXX'] = 'g++'
+    env['CCFLAGS'] = ['-Wall', '-Wextra', '-O2', '-std=c99', '-fPIC', '-shared', '-ffunction-sections', '-fdata-sections']
+    env['LINKFLAGS'] = ['-shared', '-Wl,--gc-sections', '-lm']  # 链接数学库 / Link math library
+
+# 包含路径 / Include paths / Include-Pfade
+env.Append(CPPPATH=['../pointer_transfer'])
+
+# 源文件 / Source files / Quelldateien
+source = ['add_plugin.c']
+
+# 输出路径 / Output path / Ausgabepfad
+if os.name == 'nt':
+    output_name = '../../plugins/add_plugin.dll'
+else:
+    output_name = '../../plugins/add_plugin.so'
+
+# 创建动态库 / Create dynamic library / Dynamische Bibliothek erstellen
+plugin = env.SharedLibrary(output_name, source)
+
+# 默认目标 / Default target / Standardziel
+Default(plugin)
+

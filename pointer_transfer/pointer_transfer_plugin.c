@@ -11,6 +11,7 @@
 #include "pointer_transfer_plugin_loader.h"
 #include "pointer_transfer_interface.h"
 #include "pointer_transfer_utils.h"
+#include "pointer_transfer_platform.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -333,6 +334,9 @@ POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL TransferPointer(
         size_t matched_count = 0;
         size_t success_count = 0;
         
+        /* TODO: 待实现rule_index后，可使用索引快速查找匹配规则，避免遍历所有规则
+         * 当前使用线性搜索O(n)，实现索引后可优化为O(1)或O(log n)
+         */
         for (size_t i = 0; i < ctx->rule_count; i++) {
             pointer_transfer_rule_t* rule = &ctx->rules[i];
             if (!rule->enabled) {
@@ -408,6 +412,9 @@ POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL CallPlugin(const
     size_t success_count = 0;
     
     if (ctx->rule_count > 0 && ctx->rules != NULL) {
+        /* TODO: 待实现rule_index后，可使用索引快速定位匹配规则
+         * 当前需要遍历两次（BROADCAST/MULTICAST一次，UNICAST一次），实现索引后可大幅优化
+         */
         /* BROADCAST和MULTICAST规则 / BROADCAST and MULTICAST rules / BROADCAST- und MULTICAST-Regeln */
         for (size_t i = 0; i < ctx->rule_count; i++) {
             pointer_transfer_rule_t* rule = &ctx->rules[i];
@@ -540,6 +547,9 @@ static void plugin_init(void) {
     char* nxpt_path = (char*)malloc(nxpt_path_size);
     if (nxpt_path != NULL) {
         if (build_nxpt_path(dll_path, nxpt_path, nxpt_path_size) == 0) {
+            /* 加载调度器配置文件本身的规则 / Load scheduler config file's own rules / Eigene Regeln der Scheduler-Konfigurationsdatei laden */
+            load_transfer_rules(nxpt_path);
+            
             if (parse_entry_plugin_config(nxpt_path) == 0) {
                 if (ctx->entry_nxpt_path != NULL) {
                     internal_log_write("INFO", "Loading entry plugin .nxpt file: %s", ctx->entry_nxpt_path);
@@ -554,6 +564,21 @@ static void plugin_init(void) {
                                     chain_load_plugin_nxpt(rule->target_plugin, rule->target_plugin_path);
                                 }
                             }
+                        }
+                    }
+                }
+                
+                /* 自动运行入口插件接口 / Auto-run entry plugin interface / Einstiegs-Plugin-Schnittstelle automatisch ausführen */
+                if (ctx->entry_plugin_name != NULL && ctx->entry_plugin_path != NULL && ctx->entry_auto_run_interface != NULL) {
+                    void* entry_handle = load_target_plugin(ctx->entry_plugin_name, ctx->entry_plugin_path);
+                    if (entry_handle != NULL) {
+                        void* auto_run_func = pt_platform_get_symbol(entry_handle, ctx->entry_auto_run_interface);
+                        if (auto_run_func != NULL) {
+                            typedef int32_t (NXLD_PLUGIN_CALL *AutoRunFunc)(void*);
+                            AutoRunFunc auto_run = (AutoRunFunc)auto_run_func;
+                            int32_t return_value = auto_run(NULL);
+                            
+                            CallPlugin(ctx->entry_plugin_name, ctx->entry_auto_run_interface, -1, &return_value);
                         }
                     }
                 }

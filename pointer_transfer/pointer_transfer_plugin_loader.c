@@ -22,10 +22,12 @@ void* load_target_plugin(const char* plugin_name, const char* plugin_path) {
     }
     
     pointer_transfer_context_t* ctx = get_global_context();
-    for (size_t i = 0; i < ctx->loaded_plugin_count; i++) {
-        if (ctx->loaded_plugins[i].plugin_name != NULL && 
-            strcmp(ctx->loaded_plugins[i].plugin_name, plugin_name) == 0) {
-            return ctx->loaded_plugins[i].handle;
+    if (ctx->loaded_plugins != NULL) {
+        for (size_t i = 0; i < ctx->loaded_plugin_count; i++) {
+            if (ctx->loaded_plugins[i].plugin_name != NULL && 
+                strcmp(ctx->loaded_plugins[i].plugin_name, plugin_name) == 0) {
+                return ctx->loaded_plugins[i].handle;
+            }
         }
     }
     
@@ -179,41 +181,42 @@ int get_plugin_path_cached(const char* plugin_name, char* plugin_path, size_t pa
         }
     }
     
-    for (size_t i = 0; i < ctx->loaded_plugin_count; i++) {
-        if (ctx->loaded_plugins[i].plugin_name != NULL &&
-            strcmp(ctx->loaded_plugins[i].plugin_name, plugin_name) == 0 &&
-            ctx->loaded_plugins[i].plugin_path != NULL) {
-            size_t plugin_path_len = strlen(ctx->loaded_plugins[i].plugin_path);
-            if (plugin_path_len < path_size) {
-                memcpy(plugin_path, ctx->loaded_plugins[i].plugin_path, plugin_path_len + 1);
-                
-                plugin_path_cache_entry_t* cache_entry = NULL;
-                if (ctx->path_cache == NULL || ctx->path_cache_count >= ctx->path_cache_capacity) {
-                    /* 初始容量：8，扩展因子：2 / Initial capacity: 8, growth factor: 2 / Anfangskapazität: 8, Wachstumsfaktor: 2 */
-                    size_t new_capacity = ctx->path_cache_capacity == 0 ? 8 : ctx->path_cache_capacity * 2;
-                    plugin_path_cache_entry_t* new_cache = (plugin_path_cache_entry_t*)realloc(ctx->path_cache, new_capacity * sizeof(plugin_path_cache_entry_t));
-                    if (new_cache == NULL) {
-                        return 0;
+    if (ctx->loaded_plugins != NULL) {
+        for (size_t i = 0; i < ctx->loaded_plugin_count; i++) {
+            if (ctx->loaded_plugins[i].plugin_name != NULL &&
+                strcmp(ctx->loaded_plugins[i].plugin_name, plugin_name) == 0 &&
+                ctx->loaded_plugins[i].plugin_path != NULL) {
+                size_t plugin_path_len = strlen(ctx->loaded_plugins[i].plugin_path);
+                if (plugin_path_len < path_size) {
+                    memcpy(plugin_path, ctx->loaded_plugins[i].plugin_path, plugin_path_len + 1);
+                    
+                    plugin_path_cache_entry_t* cache_entry = NULL;
+                    if (ctx->path_cache == NULL || ctx->path_cache_count >= ctx->path_cache_capacity) {
+                        /* 初始容量：8，扩展因子：2 / Initial capacity: 8, growth factor: 2 / Anfangskapazität: 8, Wachstumsfaktor: 2 */
+                        size_t new_capacity = ctx->path_cache_capacity == 0 ? 8 : ctx->path_cache_capacity * 2;
+                        plugin_path_cache_entry_t* new_cache = (plugin_path_cache_entry_t*)realloc(ctx->path_cache, new_capacity * sizeof(plugin_path_cache_entry_t));
+                        if (new_cache == NULL) {
+                            return 0;
+                        }
+                        ctx->path_cache = new_cache;
+                        memset(&ctx->path_cache[ctx->path_cache_count], 0, (new_capacity - ctx->path_cache_count) * sizeof(plugin_path_cache_entry_t));
+                        ctx->path_cache_capacity = new_capacity;
                     }
-                    ctx->path_cache = new_cache;
-                    memset(&ctx->path_cache[ctx->path_cache_count], 0, (new_capacity - ctx->path_cache_count) * sizeof(plugin_path_cache_entry_t));
-                    ctx->path_cache_capacity = new_capacity;
+                    
+                    cache_entry = &ctx->path_cache[ctx->path_cache_count];
+                    cache_entry->plugin_name = allocate_string(plugin_name);
+                    cache_entry->plugin_path = allocate_string(plugin_path);
+                    
+                    if (cache_entry->plugin_name != NULL && cache_entry->plugin_path != NULL) {
+                        ctx->path_cache_count++;
+                    } else {
+                        if (cache_entry->plugin_name != NULL) free(cache_entry->plugin_name);
+                        if (cache_entry->plugin_path != NULL) free(cache_entry->plugin_path);
+                    }
+                    
+                    return 0;
                 }
-                
-                cache_entry = &ctx->path_cache[ctx->path_cache_count];
-                cache_entry->plugin_name = allocate_string(plugin_name);
-                cache_entry->plugin_path = allocate_string(plugin_path);
-                
-                if (cache_entry->plugin_name != NULL && cache_entry->plugin_path != NULL) {
-                    ctx->path_cache_count++;
-                } else {
-                    if (cache_entry->plugin_name != NULL) free(cache_entry->plugin_name);
-                    if (cache_entry->plugin_path != NULL) free(cache_entry->plugin_path);
-                }
-                
-                return 0;
             }
-            return -1;
         }
     }
     

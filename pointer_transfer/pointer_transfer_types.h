@@ -77,6 +77,7 @@ typedef struct {
     int64_t* param_int_values;    /**< 参数INT32/INT64常量值数组 / Parameter INT32/INT64 constant values array / Parameter INT32/INT64-Konstantenwerte-Array */
     double* param_float_values;    /**< 参数FLOAT/DOUBLE常量值数组 / Parameter FLOAT/DOUBLE constant values array / Parameter FLOAT/DOUBLE-Konstantenwerte-Array */
     int is_variadic;               /**< 可变参数接口标志 / Variadic interface flag / Variabler Parameter-Interface-Flag */
+    int min_param_count;           /**< 最小参数数量（用于可变参数接口） / Minimum parameter count (for variadic interfaces) / Mindestparameteranzahl (für variabler Parameter-Interfaces) */
     int actual_param_count;        /**< 实际参数数量 / Actual parameter count / Tatsächliche Parameteranzahl */
     pt_return_type_t return_type;  /**< 返回值类型 / Return value type / Rückgabewerttyp */
     size_t return_size;            /**< 返回值大小 / Return value size / Rückgabewertgröße */
@@ -86,6 +87,11 @@ typedef struct {
 
 /**
  * @brief 规则索引项结构体 / Rule index entry structure / Regelindex-Eintrag-Struktur
+ * @todo TODO: 待实现规则索引功能，用于优化规则查找性能
+ *       - 索引键格式: "source_plugin.source_interface.source_param_index"
+ *       - 实现哈希表或排序数组+二分查找，将O(n)线性查找优化为O(1)或O(log n)
+ *       - 在load_transfer_rules()加载规则后构建索引
+ *       - 在规则查找时使用索引加速匹配
  */
 typedef struct {
     size_t rule_index;            /**< 规则索引 / Rule index / Regelindex */
@@ -120,7 +126,10 @@ typedef struct {
     pointer_transfer_rule_t* rules; /**< 传递规则数组 / Transfer rules array / Übertragungsregel-Array */
     size_t rule_count;            /**< 规则数量 / Rule count / Regelanzahl */
     size_t rule_capacity;        /**< 规则数组容量 / Rule array capacity / Regel-Array-Kapazität */
-    rule_index_entry_t* rule_index; /**< 规则索引 / Rule index / Regelindex */
+    rule_index_entry_t* rule_index; /**< 规则索引 / Rule index / Regelindex 
+                                      * @todo TODO: 待实现 - 用于快速查找规则的索引表，当前未使用
+                                      *       实现后可优化CallPlugin()和TransferPointer()中的规则匹配性能
+                                      */
     size_t rule_index_count;      /**< 规则索引数量 / Rule index count / Regelindex-Anzahl */
     loaded_plugin_info_t* loaded_plugins; /**< 已加载的插件数组 / Loaded plugins array / Geladenes Plugin-Array */
     size_t loaded_plugin_count;   /**< 已加载插件数量 / Loaded plugin count / Anzahl geladener Plugins */
@@ -138,6 +147,7 @@ typedef struct {
     char* entry_plugin_name;      /**< 入口插件名称 / Entry plugin name / Einstiegs-Plugin-Name */
     char* entry_plugin_path;      /**< 入口插件路径 / Entry plugin path / Einstiegs-Plugin-Pfad */
     char* entry_nxpt_path;        /**< 入口插件.nxpt路径 / Entry plugin .nxpt path / Einstiegs-Plugin-.nxpt-Pfad */
+    char* entry_auto_run_interface; /**< 入口插件自动运行接口名称 / Entry plugin auto-run interface name / Einstiegs-Plugin-Autostart-Schnittstellenname */
 } pointer_transfer_context_t;
 
 #ifdef __cplusplus

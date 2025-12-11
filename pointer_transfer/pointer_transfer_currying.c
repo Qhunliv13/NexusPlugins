@@ -116,14 +116,20 @@ void* pt_serialize_param_pack(pt_param_pack_t* pack) {
         return NULL;
     }
     
+    if (pack->param_count > 0 && pack->params == NULL) {
+        return NULL;
+    }
+    
     size_t total_size = sizeof(pt_param_pack_t);
     size_t struct_data_size = 0;
-    for (int i = 0; i < pack->param_count; i++) {
-        if (pack->params[i].size > sizeof(void*) && 
-            pack->params[i].value.ptr_val != NULL &&
-            pack->params[i].type != NXLD_PARAM_TYPE_POINTER &&
-            pack->params[i].type != NXLD_PARAM_TYPE_STRING) {
-            struct_data_size += pack->params[i].size;
+    if (pack->params != NULL) {
+        for (int i = 0; i < pack->param_count; i++) {
+            if (pack->params[i].size > sizeof(void*) && 
+                pack->params[i].value.ptr_val != NULL &&
+                pack->params[i].type != NXLD_PARAM_TYPE_POINTER &&
+                pack->params[i].type != NXLD_PARAM_TYPE_STRING) {
+                struct_data_size += pack->params[i].size;
+            }
         }
     }
     
@@ -140,16 +146,18 @@ void* pt_serialize_param_pack(pt_param_pack_t* pack) {
     serialized_pack->params = (pt_curried_param_t*)(data + sizeof(pt_param_pack_t));
     
     uint8_t* current_ptr = data + sizeof(pt_param_pack_t) + pack->param_count * sizeof(pt_curried_param_t);
-    for (int i = 0; i < pack->param_count; i++) {
-        serialized_pack->params[i] = pack->params[i];
-        
-        if (pack->params[i].size > sizeof(void*) && 
-            pack->params[i].value.ptr_val != NULL &&
-            pack->params[i].type != NXLD_PARAM_TYPE_POINTER &&
-            pack->params[i].type != NXLD_PARAM_TYPE_STRING) {
-            memcpy(current_ptr, pack->params[i].value.ptr_val, pack->params[i].size);
-            serialized_pack->params[i].value.ptr_val = current_ptr;
-            current_ptr += pack->params[i].size;
+    if (pack->params != NULL) {
+        for (int i = 0; i < pack->param_count; i++) {
+            serialized_pack->params[i] = pack->params[i];
+            
+            if (pack->params[i].size > sizeof(void*) && 
+                pack->params[i].value.ptr_val != NULL &&
+                pack->params[i].type != NXLD_PARAM_TYPE_POINTER &&
+                pack->params[i].type != NXLD_PARAM_TYPE_STRING) {
+                memcpy(current_ptr, pack->params[i].value.ptr_val, pack->params[i].size);
+                serialized_pack->params[i].value.ptr_val = current_ptr;
+                current_ptr += pack->params[i].size;
+            }
         }
     }
     
@@ -178,6 +186,17 @@ pt_param_pack_t* pt_deserialize_param_pack(void* data) {
 }
 
 /**
+ * @brief 释放序列化的参数包 / Free serialized parameter pack / Serialisiertes Parameterpaket freigeben
+ * @note 序列化的参数包是一个连续的内存块，应该直接释放，而不是调用pt_free_param_pack / Serialized parameter pack is a contiguous memory block and should be freed directly, not via pt_free_param_pack / Serialisiertes Parameterpaket ist ein zusammenhängender Speicherblock und sollte direkt freigegeben werden, nicht über pt_free_param_pack
+ */
+void pt_free_serialized_param_pack(void* data) {
+    if (data == NULL) {
+        return;
+    }
+    free(data);
+}
+
+/**
  * @brief 验证参数包结构符合ABI约定 / Validate parameter pack structure conforms to ABI convention / Parameterpaket-Strukturvalidierung gemäß ABI-Konvention
  */
 int32_t pt_validate_param_pack(pt_param_pack_t* pack) {
@@ -201,11 +220,6 @@ int32_t pt_validate_param_pack(pt_param_pack_t* pack) {
             
             if (param->type < NXLD_PARAM_TYPE_VOID || param->type > NXLD_PARAM_TYPE_UNKNOWN) {
                 internal_log_write("ERROR", "Invalid param pack: param[%d] has invalid type=%d", i, param->type);
-                return -1;
-            }
-            
-            if (param->size > 1024 * 1024) {
-                internal_log_write("ERROR", "Invalid param pack: param[%d] has suspiciously large size=%zu", i, param->size);
                 return -1;
             }
         }
@@ -322,7 +336,7 @@ int32_t pt_call_with_currying(void* func_ptr, pt_param_pack_t* pack,
         case PT_RETURN_TYPE_STRUCT_PTR: {
             curried_func_ptr_t f = (curried_func_ptr_t)func_ptr;
             void* struct_ptr = f((void*)pack);
-            if (result_struct != NULL && return_size > 0) {
+            if (result_struct != NULL && return_size > 0 && struct_ptr != NULL) {
                 memcpy(result_struct, struct_ptr, return_size);
             }
             *result_int = (int64_t)struct_ptr;
