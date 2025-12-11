@@ -172,8 +172,10 @@ int check_condition(const char* condition, void* param_value) {
         return (param_value == NULL) ? 1 : 0;
     }
     
+    /* 数值比较条件：假设param_value指向整数类型 / Numeric comparison conditions: assume param_value points to integer type / Numerische Vergleichsbedingungen: annehmen, dass param_value auf Ganzzahltyp zeigt */
     if (strcmp(condition, ">0") == 0) {
         if (param_value == NULL) return 0;
+        /* 注意：这里假设param_value指向int类型，调用者应确保类型匹配 / Note: assumes param_value points to int type, caller should ensure type match / Hinweis: nimmt an, dass param_value auf int-Typ zeigt, Aufrufer sollte Typübereinstimmung sicherstellen */
         int* int_val = (int*)param_value;
         return (*int_val > 0) ? 1 : 0;
     }

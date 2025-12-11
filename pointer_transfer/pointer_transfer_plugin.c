@@ -46,8 +46,11 @@ static const char* interface_versions[] = {
 };
 
 /* TransferPointer接口参数信息 / TransferPointer interface parameter information / TransferPointer-Schnittstellenparameterinformationen */
-#define TRANSFERPOINTER_PARAM_COUNT 4
+#define TRANSFERPOINTER_PARAM_COUNT 7
 static const char* transferpointer_param_names[] = {
+    "source_plugin_name",
+    "source_interface_name",
+    "source_param_index",
     "ptr",
     "expected_type",
     "type_name",
@@ -55,6 +58,9 @@ static const char* transferpointer_param_names[] = {
 };
 
 static const nxld_param_type_t transferpointer_param_types[] = {
+    NXLD_PARAM_TYPE_STRING,
+    NXLD_PARAM_TYPE_STRING,
+    NXLD_PARAM_TYPE_INT32,
     NXLD_PARAM_TYPE_POINTER,
     NXLD_PARAM_TYPE_INT32,
     NXLD_PARAM_TYPE_STRING,
@@ -62,6 +68,9 @@ static const nxld_param_type_t transferpointer_param_types[] = {
 };
 
 static const char* transferpointer_param_type_names[] = {
+    "const char*",
+    "const char*",
+    "int",
     "void*",
     "nxld_param_type_t",
     "const char*",
@@ -267,13 +276,26 @@ NXLD_PLUGIN_EXPORT int32_t NXLD_PLUGIN_CALL nxld_plugin_get_interface_param_info
 
 /**
  * @brief 传递指针 / Transfer pointer / Zeiger übertragen
+ * @param source_plugin_name 源插件名称 / Source plugin name / Quell-Plugin-Name
+ * @param source_interface_name 源接口名称 / Source interface name / Quell-Schnittstellenname
+ * @param source_param_index 源参数索引 / Source parameter index / Quell-Parameterindex
  * @param ptr 指针 / Pointer / Zeiger
  * @param expected_type 数据类型 / Data type / Datentyp
  * @param type_name 类型名称 / Type name / Typname
  * @param data_size 数据大小 / Data size / Datengröße
  * @return 成功返回0，类型不匹配返回1，其他错误返回-1 / Returns 0 on success, 1 on type mismatch, -1 on other errors / Gibt 0 bei Erfolg zurück, 1 bei Typfehlanpassung, -1 bei anderen Fehlern
  */
-POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL TransferPointer(void* ptr, nxld_param_type_t expected_type, const char* type_name, size_t data_size) {
+POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL TransferPointer(const char* source_plugin_name, const char* source_interface_name, int source_param_index, void* ptr, nxld_param_type_t expected_type, const char* type_name, size_t data_size) {
+    if (source_plugin_name == NULL) {
+        internal_log_write("WARNING", "TransferPointer: received NULL source_plugin_name");
+        return -1;
+    }
+    
+    if (source_interface_name == NULL) {
+        internal_log_write("WARNING", "TransferPointer: received NULL source_interface_name");
+        return -1;
+    }
+    
     if (ptr == NULL) {
         internal_log_write("WARNING", "TransferPointer: received NULL pointer");
         return -1;
@@ -327,8 +349,8 @@ POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL TransferPointer(
         return 1;
     }
     
-    internal_log_write("INFO", "TransferPointer: pointer transferred successfully - type: %s (%s), size: %zu", 
-                  get_type_name_string(expected_type), type_name != NULL ? type_name : "unknown", data_size);
+    internal_log_write("INFO", "TransferPointer: pointer transferred successfully - source_plugin=%s, source_interface=%s, source_param_index=%d, type: %s (%s), size: %zu", 
+                  source_plugin_name, source_interface_name, source_param_index, get_type_name_string(expected_type), type_name != NULL ? type_name : "unknown", data_size);
     
     if (ctx->rule_count > 0 && ctx->rules != NULL) {
         size_t matched_count = 0;
@@ -337,35 +359,39 @@ POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL TransferPointer(
         /* 使用索引快速查找匹配规则 / Use index to quickly find matching rules / Index verwenden, um passende Regeln schnell zu finden */
         size_t start_index = 0;
         size_t end_index = 0;
-        int use_index = find_rule_index_range("PointerTransferPlugin", "TransferPointer", 0, &start_index, &end_index);
+        int use_index = find_rule_index_range(source_plugin_name, source_interface_name, source_param_index, &start_index, &end_index);
         
         if (use_index) {
             /* 使用索引范围查找 / Use index range lookup / Indexbereichssuche verwenden */
+            /* BROADCAST和MULTICAST规则 / BROADCAST and MULTICAST rules / BROADCAST- und MULTICAST-Regeln */
             for (size_t i = start_index; i <= end_index && i < ctx->rule_count; i++) {
                 pointer_transfer_rule_t* rule = &ctx->rules[i];
                 if (!rule->enabled) {
                     continue;
                 }
                 
-                if (rule->source_interface != NULL && strcmp(rule->source_interface, "TransferPointer") == 0 &&
-                    rule->source_param_index == 0) {
-                    int should_apply = 0;
+                if (rule->source_plugin != NULL && rule->source_interface != NULL &&
+                    strcmp(rule->source_plugin, source_plugin_name) == 0 &&
+                    strcmp(rule->source_interface, source_interface_name) == 0 &&
+                    rule->source_param_index == source_param_index) {
                     
-                    if (rule->transfer_mode == TRANSFER_MODE_BROADCAST) {
-                        should_apply = 1;
-                    } else if (rule->transfer_mode == TRANSFER_MODE_MULTICAST) {
-                        if (rule->multicast_group != NULL && strlen(rule->multicast_group) > 0) {
-                            should_apply = 1;
+                    if (rule->transfer_mode == TRANSFER_MODE_BROADCAST || rule->transfer_mode == TRANSFER_MODE_MULTICAST) {
+                        if (rule->transfer_mode == TRANSFER_MODE_MULTICAST) {
+                            if (rule->multicast_group == NULL || strlen(rule->multicast_group) == 0) {
+                                continue;
+                            }
                         }
-                    } else {
-                        should_apply = 1;
-                    }
-                    
-                    if (should_apply) {
+                        
+                        if (!check_condition(rule->condition, ptr)) {
+                            internal_log_write("INFO", "Transfer rule %zu condition not met, skipping - condition: %s", 
+                                        i, rule->condition != NULL ? rule->condition : "none");
+                            continue;
+                        }
+                        
                         matched_count++;
-                        internal_log_write("INFO", "Applying transfer rule %zu (mode=%d) - %s to %s.%s[%d]", 
+                        internal_log_write("INFO", "Applying transfer rule %zu (mode=%d) - %s.%s[%d] to %s.%s[%d]", 
                                     i, (int)rule->transfer_mode,
-                                    rule->description != NULL ? rule->description : "unnamed",
+                                    source_plugin_name, source_interface_name, source_param_index,
                                     rule->target_plugin != NULL ? rule->target_plugin : "unknown",
                                     rule->target_interface != NULL ? rule->target_interface : "unknown",
                                     rule->target_param_index);
@@ -377,40 +403,34 @@ POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL TransferPointer(
                         } else {
                             internal_log_write("WARNING", "Failed to call target plugin interface (error=%d)", call_result);
                         }
-                        
-                        if (rule->transfer_mode == TRANSFER_MODE_UNICAST) {
-                            break;
-                        }
                     }
                 }
             }
-        } else {
-            /* 回退到线性搜索 / Fallback to linear search / Fallback auf lineare Suche */
-            for (size_t i = 0; i < ctx->rule_count; i++) {
+            
+            /* UNICAST规则 / UNICAST rules / UNICAST-Regeln */
+            /* UNICAST模式：允许传递给同一个接口的不同参数索引，只有当找到完全相同的目标位置时才停止 / UNICAST mode: allow passing to different parameter indices of the same interface, only stop when exact duplicate target is found / UNICAST-Modus: Übergabe an verschiedene Parameterindizes derselben Schnittstelle zulassen, nur stoppen, wenn exaktes doppeltes Ziel gefunden wird */
+            for (size_t i = start_index; i <= end_index && i < ctx->rule_count; i++) {
                 pointer_transfer_rule_t* rule = &ctx->rules[i];
                 if (!rule->enabled) {
                     continue;
                 }
                 
-                if (rule->source_interface != NULL && strcmp(rule->source_interface, "TransferPointer") == 0) {
-                    if (rule->source_param_index == 0) {
-                        int should_apply = 0;
+                if (rule->source_plugin != NULL && rule->source_interface != NULL) {
+                    if (strcmp(rule->source_plugin, source_plugin_name) == 0 &&
+                        strcmp(rule->source_interface, source_interface_name) == 0 &&
+                        rule->source_param_index == source_param_index) {
                         
-                        if (rule->transfer_mode == TRANSFER_MODE_BROADCAST) {
-                            should_apply = 1;
-                        } else if (rule->transfer_mode == TRANSFER_MODE_MULTICAST) {
-                            if (rule->multicast_group != NULL && strlen(rule->multicast_group) > 0) {
-                                should_apply = 1;
+                        if (rule->transfer_mode == TRANSFER_MODE_UNICAST) {
+                            if (!check_condition(rule->condition, ptr)) {
+                                internal_log_write("INFO", "Transfer rule %zu condition not met, skipping - condition: %s", 
+                                            i, rule->condition != NULL ? rule->condition : "none");
+                                continue;
                             }
-                        } else {
-                            should_apply = 1;
-                        }
-                        
-                        if (should_apply) {
+                            
                             matched_count++;
-                            internal_log_write("INFO", "Applying transfer rule %zu (mode=%d) - %s to %s.%s[%d]", 
+                            internal_log_write("INFO", "Applying transfer rule %zu (mode=%d) - %s.%s[%d] to %s.%s[%d]", 
                                         i, (int)rule->transfer_mode,
-                                        rule->description != NULL ? rule->description : "unnamed",
+                                        source_plugin_name, source_interface_name, source_param_index,
                                         rule->target_plugin != NULL ? rule->target_plugin : "unknown",
                                         rule->target_interface != NULL ? rule->target_interface : "unknown",
                                         rule->target_param_index);
@@ -423,7 +443,137 @@ POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL TransferPointer(
                                 internal_log_write("WARNING", "Failed to call target plugin interface (error=%d)", call_result);
                             }
                             
-                            if (rule->transfer_mode == TRANSFER_MODE_UNICAST) {
+                            /* 检查是否有其他规则匹配完全相同的目标位置（插件+接口+参数索引） / Check if other rules match the exact same target location (plugin+interface+parameter index) / Prüfen, ob andere Regeln exakt dieselbe Zielposition (Plugin+Schnittstelle+Parameterindex) abgleichen */
+                            int has_exact_duplicate = 0;
+                            for (size_t j = i + 1; j <= end_index && j < ctx->rule_count; j++) {
+                                pointer_transfer_rule_t* next_rule = &ctx->rules[j];
+                                if (!next_rule->enabled || next_rule->source_plugin == NULL || next_rule->source_interface == NULL) {
+                                    continue;
+                                }
+                                if (strcmp(next_rule->source_plugin, source_plugin_name) == 0 &&
+                                    strcmp(next_rule->source_interface, source_interface_name) == 0 &&
+                                    next_rule->source_param_index == source_param_index &&
+                                    next_rule->target_plugin != NULL && next_rule->target_interface != NULL &&
+                                    rule->target_plugin != NULL && rule->target_interface != NULL &&
+                                    strcmp(next_rule->target_plugin, rule->target_plugin) == 0 &&
+                                    strcmp(next_rule->target_interface, rule->target_interface) == 0 &&
+                                    next_rule->target_param_index == rule->target_param_index) {
+                                    has_exact_duplicate = 1;
+                                    break;
+                                }
+                            }
+                            /* 只有在找到完全相同的目标位置时才停止，允许传递给同一接口的不同参数 / Only stop when exact duplicate target is found, allow passing to different parameters of the same interface / Nur stoppen, wenn exaktes doppeltes Ziel gefunden wird, Übergabe an verschiedene Parameter derselben Schnittstelle zulassen */
+                            if (has_exact_duplicate) {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            /* 回退到线性搜索 / Fallback to linear search / Fallback auf lineare Suche */
+            /* BROADCAST和MULTICAST规则 / BROADCAST and MULTICAST rules / BROADCAST- und MULTICAST-Regeln */
+            for (size_t i = 0; i < ctx->rule_count; i++) {
+                pointer_transfer_rule_t* rule = &ctx->rules[i];
+                if (!rule->enabled) {
+                    continue;
+                }
+                
+                if (rule->source_plugin != NULL && rule->source_interface != NULL) {
+                    if (strcmp(rule->source_plugin, source_plugin_name) == 0 &&
+                        strcmp(rule->source_interface, source_interface_name) == 0 &&
+                        rule->source_param_index == source_param_index) {
+                        
+                        if (rule->transfer_mode == TRANSFER_MODE_BROADCAST || rule->transfer_mode == TRANSFER_MODE_MULTICAST) {
+                            if (rule->transfer_mode == TRANSFER_MODE_MULTICAST) {
+                                if (rule->multicast_group == NULL || strlen(rule->multicast_group) == 0) {
+                                    continue;
+                                }
+                            }
+                            
+                            if (!check_condition(rule->condition, ptr)) {
+                                internal_log_write("INFO", "Transfer rule %zu condition not met, skipping - condition: %s", 
+                                            i, rule->condition != NULL ? rule->condition : "none");
+                                continue;
+                            }
+                            
+                            matched_count++;
+                            internal_log_write("INFO", "Applying transfer rule %zu (mode=%d) - %s.%s[%d] to %s.%s[%d]", 
+                                        i, (int)rule->transfer_mode,
+                                        source_plugin_name, source_interface_name, source_param_index,
+                                        rule->target_plugin != NULL ? rule->target_plugin : "unknown",
+                                        rule->target_interface != NULL ? rule->target_interface : "unknown",
+                                        rule->target_param_index);
+                            
+                            int call_result = call_target_plugin_interface(rule, ptr);
+                            if (call_result == 0) {
+                                success_count++;
+                                internal_log_write("INFO", "Successfully called target plugin interface");
+                            } else {
+                                internal_log_write("WARNING", "Failed to call target plugin interface (error=%d)", call_result);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            /* UNICAST规则 / UNICAST rules / UNICAST-Regeln */
+            /* UNICAST模式：允许传递给同一个接口的不同参数索引，只有当找到完全相同的目标位置时才停止 / UNICAST mode: allow passing to different parameter indices of the same interface, only stop when exact duplicate target is found / UNICAST-Modus: Übergabe an verschiedene Parameterindizes derselben Schnittstelle zulassen, nur stoppen, wenn exaktes doppeltes Ziel gefunden wird */
+            for (size_t i = 0; i < ctx->rule_count; i++) {
+                pointer_transfer_rule_t* rule = &ctx->rules[i];
+                if (!rule->enabled) {
+                    continue;
+                }
+                
+                if (rule->source_plugin != NULL && rule->source_interface != NULL) {
+                    if (strcmp(rule->source_plugin, source_plugin_name) == 0 &&
+                        strcmp(rule->source_interface, source_interface_name) == 0 &&
+                        rule->source_param_index == source_param_index) {
+                        
+                        if (rule->transfer_mode == TRANSFER_MODE_UNICAST) {
+                            if (!check_condition(rule->condition, ptr)) {
+                                internal_log_write("INFO", "Transfer rule %zu condition not met, skipping - condition: %s", 
+                                            i, rule->condition != NULL ? rule->condition : "none");
+                                continue;
+                            }
+                            
+                            matched_count++;
+                            internal_log_write("INFO", "Applying transfer rule %zu (mode=%d) - %s.%s[%d] to %s.%s[%d]", 
+                                        i, (int)rule->transfer_mode,
+                                        source_plugin_name, source_interface_name, source_param_index,
+                                        rule->target_plugin != NULL ? rule->target_plugin : "unknown",
+                                        rule->target_interface != NULL ? rule->target_interface : "unknown",
+                                        rule->target_param_index);
+                            
+                            int call_result = call_target_plugin_interface(rule, ptr);
+                            if (call_result == 0) {
+                                success_count++;
+                                internal_log_write("INFO", "Successfully called target plugin interface");
+                            } else {
+                                internal_log_write("WARNING", "Failed to call target plugin interface (error=%d)", call_result);
+                            }
+                            
+                            /* 检查是否有其他规则匹配完全相同的目标位置（插件+接口+参数索引） / Check if other rules match the exact same target location (plugin+interface+parameter index) / Prüfen, ob andere Regeln exakt dieselbe Zielposition (Plugin+Schnittstelle+Parameterindex) abgleichen */
+                            int has_exact_duplicate = 0;
+                            for (size_t j = i + 1; j < ctx->rule_count; j++) {
+                                pointer_transfer_rule_t* next_rule = &ctx->rules[j];
+                                if (!next_rule->enabled || next_rule->source_plugin == NULL || next_rule->source_interface == NULL) {
+                                    continue;
+                                }
+                                if (strcmp(next_rule->source_plugin, source_plugin_name) == 0 &&
+                                    strcmp(next_rule->source_interface, source_interface_name) == 0 &&
+                                    next_rule->source_param_index == source_param_index &&
+                                    next_rule->target_plugin != NULL && next_rule->target_interface != NULL &&
+                                    rule->target_plugin != NULL && rule->target_interface != NULL &&
+                                    strcmp(next_rule->target_plugin, rule->target_plugin) == 0 &&
+                                    strcmp(next_rule->target_interface, rule->target_interface) == 0 &&
+                                    next_rule->target_param_index == rule->target_param_index) {
+                                    has_exact_duplicate = 1;
+                                    break;
+                                }
+                            }
+                            /* 只有在找到完全相同的目标位置时才停止，允许传递给同一接口的不同参数 / Only stop when exact duplicate target is found, allow passing to different parameters of the same interface / Nur stoppen, wenn exaktes doppeltes Ziel gefunden wird, Übergabe an verschiedene Parameter derselben Schnittstelle zulassen */
+                            if (has_exact_duplicate) {
                                 break;
                             }
                         }

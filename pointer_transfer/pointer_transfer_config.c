@@ -11,8 +11,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
-#include <string.h>
-#include <limits.h>
 
 /**
  * @brief 查询.nxpt文件加载状态 / Query .nxpt file load status / .nxpt-Datei-Ladestatus abfragen

@@ -92,19 +92,21 @@ target_interface_state_t* find_or_create_interface_state(const char* plugin_name
          return NULL;
      }
      
+     pt_return_type_t inferred_return_type = PT_RETURN_TYPE_INTEGER; /* 默认返回值类型 / Default return type / Standard-Rückgabetyp */
+     char* saved_desc_buf = NULL;
+     
      for (size_t i = 0; i < interface_count; i++) {
          if (get_interface_info(i, iface_name, iface_name_buf_size, desc_buf, desc_buf_size, NULL, 0) == 0) {
              if (strcmp(iface_name, interface_name) == 0) {
                  target_interface_index = i;
+                 /* 找到匹配接口后立即推断返回类型，此时desc_buf已填充 / Infer return type immediately after finding matching interface, desc_buf is already filled / Rückgabetyp sofort nach Auffinden der passenden Schnittstelle ableiten, desc_buf ist bereits gefüllt */
+                 inferred_return_type = infer_return_type_from_description(desc_buf);
+                 if (desc_buf != NULL && strlen(desc_buf) > 0) {
+                     saved_desc_buf = allocate_string(desc_buf);
+                 }
                  break;
              }
          }
-     }
-     
-     pt_return_type_t inferred_return_type = infer_return_type_from_description(desc_buf);
-     char* saved_desc_buf = NULL;
-     if (desc_buf != NULL && strlen(desc_buf) > 0) {
-         saved_desc_buf = allocate_string(desc_buf);
      }
      
      free(iface_name);
@@ -122,6 +124,9 @@ target_interface_state_t* find_or_create_interface_state(const char* plugin_name
      int32_t min_count = 0;
      int32_t max_count = 0;
      if (get_param_count(target_interface_index, &param_count_type, &min_count, &max_count) != 0) {
+         if (saved_desc_buf != NULL) {
+             free(saved_desc_buf);
+         }
          return NULL;
      }
      
@@ -352,10 +357,14 @@ target_interface_state_t* find_or_create_interface_state(const char* plugin_name
         if (rule->target_param_value != NULL && strlen(rule->target_param_value) > 0) {
             if (!set_parameter_value_from_const_string((struct target_interface_state_s*)state, rule->target_param_index, 
                                                         rule->target_param_value, rule->target_plugin, rule->target_interface)) {
-                internal_log_write("WARNING", "Failed to parse constant value for parameter %d of %s.%s", 
+                internal_log_write("WARNING", "Failed to parse constant value for parameter %d of %s.%s, falling back to pointer", 
                     rule->target_param_index, rule->target_plugin, rule->target_interface);
+                /* 回退到指针设置，确保所有字段一致 / Fallback to pointer setting, ensure all fields are consistent / Fallback auf Zeigereinstellung, sicherstellen, dass alle Felder konsistent sind */
                 state->param_values[rule->target_param_index] = ptr;
                 state->param_ready[rule->target_param_index] = 1;
+                if (state->param_sizes != NULL) {
+                    state->param_sizes[rule->target_param_index] = ctx->stored_size > 0 ? ctx->stored_size : sizeof(void*);
+                }
             }
         } else {
             set_parameter_value_from_pointer((struct target_interface_state_s*)state, rule->target_param_index, 
@@ -493,10 +502,14 @@ target_interface_state_t* find_or_create_interface_state(const char* plugin_name
                         }
                     }
                     if (all_intermediate_ready) {
-                        if (extra_rule->target_param_index == INT_MAX) {
-                            internal_log_write("ERROR", "Parameter index overflow detected for %s.%s: target_param_index=%d (INT_MAX), cannot increment", 
+                        if (extra_rule->target_param_index == INT_MAX || extra_rule->target_param_index < 0) {
+                            internal_log_write("ERROR", "Invalid parameter index detected for %s.%s: target_param_index=%d, skipping this rule", 
                                          rule->target_plugin, rule->target_interface, extra_rule->target_param_index);
-                            actual_param_count = INT_MAX;
+                            /* 跳过此规则，不更新actual_param_count / Skip this rule, don't update actual_param_count / Diese Regel überspringen, actual_param_count nicht aktualisieren */
+                        } else if (extra_rule->target_param_index >= state->param_count) {
+                            internal_log_write("WARNING", "Parameter index %d exceeds param_count %d for %s.%s, limiting to param_count", 
+                                         extra_rule->target_param_index, state->param_count, rule->target_plugin, rule->target_interface);
+                            actual_param_count = state->param_count;
                         } else {
                             actual_param_count = extra_rule->target_param_index + 1;
                         }
@@ -508,8 +521,13 @@ target_interface_state_t* find_or_create_interface_state(const char* plugin_name
             }
         }
         state->actual_param_count = actual_param_count;
-        internal_log_write("INFO", "Variadic interface %s.%s: using %d parameters (min=%d)", 
-                     rule->target_plugin, rule->target_interface, actual_param_count, state->param_count);
+        /* 再次验证是否满足最小参数要求 / Verify again if minimum parameter requirement is met / Erneut prüfen, ob Mindestparameteranforderung erfüllt ist */
+        if (actual_param_count < state->min_param_count) {
+            internal_log_write("WARNING", "Variadic interface %s.%s: actual_param_count=%d is less than min_param_count=%d, this may cause call failure", 
+                         rule->target_plugin, rule->target_interface, actual_param_count, state->min_param_count);
+        }
+        internal_log_write("INFO", "Variadic interface %s.%s: using %d parameters (min_required=%d, max_available=%d)", 
+                     rule->target_plugin, rule->target_interface, actual_param_count, state->min_param_count, state->param_count);
      }
      
      pt_return_type_t return_type = state->return_type;
@@ -542,10 +560,20 @@ target_interface_state_t* find_or_create_interface_state(const char* plugin_name
          memset(struct_buffer, 0, return_size);
      }
      
-     internal_log_write("INFO", "Calling %s.%s (param_count=%d, return_type=%d, return_size=%zu)", 
-                  rule->target_plugin, rule->target_interface, actual_param_count, return_type, return_size);
-     
-     if (!state->validation_done) {
+    /* 最终验证：可变参数接口必须满足最小参数要求 / Final validation: variadic interface must meet minimum parameter requirement / Endgültige Validierung: Variabler Parameter-Interface muss Mindestparameteranforderung erfüllen */
+    if (state->is_variadic && actual_param_count < state->min_param_count) {
+        internal_log_write("ERROR", "Cannot call %s.%s: actual_param_count=%d is less than min_param_count=%d", 
+                     rule->target_plugin, rule->target_interface, actual_param_count, state->min_param_count);
+        if (struct_buffer != NULL) {
+            free(struct_buffer);
+        }
+        return -1;
+    }
+    
+    internal_log_write("INFO", "Calling %s.%s (param_count=%d, return_type=%d, return_size=%zu)", 
+                 rule->target_plugin, rule->target_interface, actual_param_count, return_type, return_size);
+    
+    if (!state->validation_done) {
          pt_param_pack_t* test_pack = pt_create_param_pack(actual_param_count, state->param_types, state->param_values, state->param_sizes);
          if (test_pack != NULL) {
              int32_t validation_result = pt_validate_param_pack(test_pack);

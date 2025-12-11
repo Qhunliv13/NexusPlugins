@@ -23,13 +23,16 @@ extern "C" {
 
 /**
  * @brief 传递指针 / Transfer pointer / Zeiger übertragen
+ * @param source_plugin_name 源插件名称 / Source plugin name / Quell-Plugin-Name
+ * @param source_interface_name 源接口名称 / Source interface name / Quell-Schnittstellenname
+ * @param source_param_index 源参数索引 / Source parameter index / Quell-Parameterindex
  * @param ptr 指针 / Pointer / Zeiger
  * @param expected_type 数据类型 / Data type / Datentyp
  * @param type_name 类型名称 / Type name / Typname
  * @param data_size 数据大小 / Data size / Datengröße
  * @return 成功返回0，类型不匹配返回1，其他错误返回-1 / Returns 0 on success, 1 on type mismatch, -1 on other errors / Gibt 0 bei Erfolg zurück, 1 bei Typfehlanpassung, -1 bei anderen Fehlern
  */
-POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL TransferPointer(void* ptr, nxld_param_type_t expected_type, const char* type_name, size_t data_size);
+POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL TransferPointer(const char* source_plugin_name, const char* source_interface_name, int source_param_index, void* ptr, nxld_param_type_t expected_type, const char* type_name, size_t data_size);
 
 /**
  * @brief 调用目标插件接口 / Call target plugin interface / Ziel-Plugin-Schnittstelle aufrufen

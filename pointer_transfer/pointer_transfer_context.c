@@ -322,7 +322,7 @@ int find_rule_index_range(const char* source_plugin, const char* source_interfac
     }
     
     pointer_transfer_context_t* ctx = get_global_context();
-    if (ctx->rule_hash_table.buckets == NULL || ctx->rule_hash_table.entry_count == 0) {
+    if (ctx->rule_hash_table.buckets == NULL || ctx->rule_hash_table.entry_count == 0 || ctx->rule_hash_table.bucket_count == 0) {
         return 0;
     }
     
