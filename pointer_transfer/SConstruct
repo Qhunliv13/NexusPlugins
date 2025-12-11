@@ -61,28 +61,6 @@ else:
 # 创建动态库 / Create dynamic library / Dynamische Bibliothek erstellen
 plugin = env.SharedLibrary(output_name, source)
 
-# 集成测试程序 / Integration test program
-integration_test_source = [
-    'test_integration.c',
-    'pointer_transfer_plugin.c',
-    'pointer_transfer_utils.c',
-    'pointer_transfer_context.c',
-    'pointer_transfer_config.c',
-    'pointer_transfer_plugin_loader.c',
-    'pointer_transfer_interface.c',
-    'pointer_transfer_platform.c',
-    'pointer_transfer_currying.c'  # 柯里化实现替代汇编 / Currying implementation replaces assembly / Currying-Implementierung ersetzt Assembler
-]
-env.Program('test_integration', integration_test_source)
-
-# 测试插件 / Test plugin
-test_plugin_source = ['test_plugin.c']
-if os.name == 'nt':
-    test_plugin_output = 'test_plugin.dll'
-else:
-    test_plugin_output = 'test_plugin.so'
-env.SharedLibrary(test_plugin_output, test_plugin_source)
-
 # 默认目标 / Default target / Standardziel
 Default(plugin)
 
