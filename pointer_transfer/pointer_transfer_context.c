@@ -10,11 +10,21 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <stdio.h>
+
+/* 哈希表常量 / Hash table constants / Hash-Tabellen-Konstanten */
+#define HASH_TABLE_INITIAL_SIZE 16
+#define HASH_TABLE_LOAD_FACTOR 0.75
+
+/* 前向声明 / Forward declarations / Vorwärtsdeklarationen */
+static void free_hash_table(rule_hash_table_t* hash_table);
+static uint64_t hash_string(const char* str);
+static uint64_t calculate_rule_hash_key(const char* source_plugin, const char* source_interface, int source_param_index);
 
 /* 全局上下文变量 / Global context variable / Globale Kontextvariable */
 static pointer_transfer_context_t g_context = {
     NULL, NXLD_PARAM_TYPE_UNKNOWN, NULL, 0,
-    NULL, 0, 0, NULL, 0,
+    NULL, 0, 0, {NULL, 0, 0}, NULL, 0, 0,
     NULL, 0, 0, NULL, 0, 0,
     NULL, NULL, 0, 0,
     NULL, 0, 0,
@@ -98,19 +108,8 @@ void free_transfer_rules(void) {
     ctx->rule_count = 0;
     ctx->rule_capacity = 0;
     
-    /* TODO: 待实现rule_index构建功能后，此处的释放代码才会真正生效
-     * 当前rule_index始终为NULL，此代码为预留的清理逻辑
-     */
-    if (ctx->rule_index != NULL) {
-        for (size_t i = 0; i < ctx->rule_index_count; i++) {
-            if (ctx->rule_index[i].key != NULL) {
-                free(ctx->rule_index[i].key);
-            }
-        }
-        free(ctx->rule_index);
-        ctx->rule_index = NULL;
-        ctx->rule_index_count = 0;
-    }
+    /* 释放哈希表 / Free hash table / Hash-Tabelle freigeben */
+    free_hash_table(&ctx->rule_hash_table);
     
     if (ctx->path_cache != NULL) {
         for (size_t i = 0; i < ctx->path_cache_count; i++) {
@@ -135,6 +134,308 @@ void init_context(void) {
     pointer_transfer_context_t* ctx = get_global_context();
     memset(ctx, 0, sizeof(pointer_transfer_context_t));
     ctx->stored_type = NXLD_PARAM_TYPE_UNKNOWN;
+}
+
+/**
+ * @brief 字符串哈希函数（FNV-1a算法）/ String hash function (FNV-1a algorithm) / Zeichenfolgen-Hash-Funktion (FNV-1a-Algorithmus)
+ */
+static uint64_t hash_string(const char* str) {
+    if (str == NULL) {
+        return 0;
+    }
+    
+    uint64_t hash = 14695981039346656037ULL; /* FNV offset basis */
+    const char* p = str;
+    
+    while (*p != '\0') {
+        hash ^= (uint64_t)(unsigned char)(*p);
+        hash *= 1099511628211ULL; /* FNV prime */
+        p++;
+    }
+    
+    return hash;
+}
+
+/**
+ * @brief 计算规则哈希键 / Calculate rule hash key / Regel-Hash-Schlüssel berechnen
+ */
+static uint64_t calculate_rule_hash_key(const char* source_plugin, const char* source_interface, int source_param_index) {
+    char key_buffer[512];
+    int written = snprintf(key_buffer, sizeof(key_buffer), "%s.%s.%d", 
+                          source_plugin != NULL ? source_plugin : "",
+                          source_interface != NULL ? source_interface : "",
+                          source_param_index);
+    if (written < 0 || (size_t)written >= sizeof(key_buffer)) {
+        return 0;
+    }
+    return hash_string(key_buffer);
+}
+
+/**
+ * @brief 释放哈希表 / Free hash table / Hash-Tabelle freigeben
+ */
+static void free_hash_table(rule_hash_table_t* hash_table) {
+    if (hash_table == NULL || hash_table->buckets == NULL) {
+        return;
+    }
+    
+    for (size_t i = 0; i < hash_table->bucket_count; i++) {
+        rule_hash_node_t* node = hash_table->buckets[i];
+        while (node != NULL) {
+            rule_hash_node_t* next = node->next;
+            free(node);
+            node = next;
+        }
+    }
+    
+    free(hash_table->buckets);
+    hash_table->buckets = NULL;
+    hash_table->bucket_count = 0;
+    hash_table->entry_count = 0;
+}
+
+/**
+ * @brief 扩展哈希表 / Expand hash table / Hash-Tabelle erweitern
+ */
+static int expand_hash_table(rule_hash_table_t* hash_table) {
+    if (hash_table == NULL) {
+        return -1;
+    }
+    
+    size_t old_bucket_count = hash_table->bucket_count;
+    rule_hash_node_t** old_buckets = hash_table->buckets;
+    
+    size_t new_bucket_count = old_bucket_count == 0 ? HASH_TABLE_INITIAL_SIZE : old_bucket_count * 2;
+    rule_hash_node_t** new_buckets = (rule_hash_node_t**)calloc(new_bucket_count, sizeof(rule_hash_node_t*));
+    if (new_buckets == NULL) {
+        return -1;
+    }
+    
+    /* 重新哈希所有条目 / Rehash all entries / Alle Einträge neu hashen */
+    for (size_t i = 0; i < old_bucket_count; i++) {
+        rule_hash_node_t* node = old_buckets[i];
+        while (node != NULL) {
+            rule_hash_node_t* next = node->next;
+            size_t new_bucket = node->hash_key % new_bucket_count;
+            node->next = new_buckets[new_bucket];
+            new_buckets[new_bucket] = node;
+            node = next;
+        }
+    }
+    
+    free(old_buckets);
+    hash_table->buckets = new_buckets;
+    hash_table->bucket_count = new_bucket_count;
+    
+    return 0;
+}
+
+/**
+ * @brief 向哈希表插入规则 / Insert rule into hash table / Regel in Hash-Tabelle einfügen
+ */
+static int insert_rule_into_hash_table(rule_hash_table_t* hash_table, uint64_t hash_key, size_t rule_index) {
+    if (hash_table == NULL) {
+        return -1;
+    }
+    
+    /* 检查是否需要扩展 / Check if expansion needed / Prüfen, ob Erweiterung erforderlich */
+    if (hash_table->bucket_count == 0 || 
+        (hash_table->entry_count > 0 && 
+         (double)hash_table->entry_count / hash_table->bucket_count > HASH_TABLE_LOAD_FACTOR)) {
+        if (expand_hash_table(hash_table) != 0) {
+            return -1;
+        }
+    }
+    
+    size_t bucket = hash_key % hash_table->bucket_count;
+    
+    /* 创建新节点 / Create new node / Neuen Knoten erstellen */
+    rule_hash_node_t* new_node = (rule_hash_node_t*)malloc(sizeof(rule_hash_node_t));
+    if (new_node == NULL) {
+        return -1;
+    }
+    
+    new_node->hash_key = hash_key;
+    new_node->rule_index = rule_index;
+    new_node->next = hash_table->buckets[bucket];
+    hash_table->buckets[bucket] = new_node;
+    hash_table->entry_count++;
+    
+    return 0;
+}
+
+/**
+ * @brief 构建规则索引（哈希表）/ Build rule index (hash table) / Regelindex erstellen (Hash-Tabelle)
+ * @return 成功返回0，失败返回非0 / Returns 0 on success, non-zero on failure / Gibt 0 bei Erfolg zurück, ungleich 0 bei Fehler
+ */
+int build_rule_index(void) {
+    pointer_transfer_context_t* ctx = get_global_context();
+    
+    /* 释放旧哈希表 / Free old hash table / Alte Hash-Tabelle freigeben */
+    free_hash_table(&ctx->rule_hash_table);
+    
+    if (ctx->rule_count == 0 || ctx->rules == NULL) {
+        return 0;
+    }
+    
+    /* 初始化哈希表 / Initialize hash table / Hash-Tabelle initialisieren */
+    ctx->rule_hash_table.bucket_count = HASH_TABLE_INITIAL_SIZE;
+    ctx->rule_hash_table.entry_count = 0;
+    ctx->rule_hash_table.buckets = (rule_hash_node_t**)calloc(ctx->rule_hash_table.bucket_count, sizeof(rule_hash_node_t*));
+    if (ctx->rule_hash_table.buckets == NULL) {
+        return -1;
+    }
+    
+    /* 构建索引项 / Build index entries / Indexeinträge erstellen */
+    for (size_t i = 0; i < ctx->rule_count; i++) {
+        pointer_transfer_rule_t* rule = &ctx->rules[i];
+        if (!rule->enabled || rule->source_plugin == NULL || rule->source_interface == NULL) {
+            continue;
+        }
+        
+        uint64_t hash_key = calculate_rule_hash_key(rule->source_plugin, rule->source_interface, rule->source_param_index);
+        if (hash_key != 0) {
+            if (insert_rule_into_hash_table(&ctx->rule_hash_table, hash_key, i) != 0) {
+                free_hash_table(&ctx->rule_hash_table);
+                return -1;
+            }
+        }
+    }
+    
+    internal_log_write("INFO", "Built rule hash table with %zu entries in %zu buckets", 
+                      ctx->rule_hash_table.entry_count, ctx->rule_hash_table.bucket_count);
+    return 0;
+}
+
+/**
+ * @brief 查找规则索引范围（哈希表）/ Find rule index range (hash table) / Regelindex-Bereich suchen (Hash-Tabelle)
+ * @param source_plugin 源插件名称 / Source plugin name / Quell-Plugin-Name
+ * @param source_interface 源接口名称 / Source interface name / Quell-Schnittstellenname
+ * @param source_param_index 源参数索引 / Source parameter index / Quell-Parameterindex
+ * @param start_index 输出起始索引指针 / Output start index pointer / Ausgabe-Startindex-Zeiger
+ * @param end_index 输出结束索引指针 / Output end index pointer / Ausgabe-Endindex-Zeiger
+ * @return 找到返回1，未找到返回0 / Returns 1 if found, 0 if not found / Gibt 1 zurück wenn gefunden, 0 wenn nicht gefunden
+ */
+int find_rule_index_range(const char* source_plugin, const char* source_interface, int source_param_index, size_t* start_index, size_t* end_index) {
+    if (source_plugin == NULL || source_interface == NULL || start_index == NULL || end_index == NULL) {
+        return 0;
+    }
+    
+    pointer_transfer_context_t* ctx = get_global_context();
+    if (ctx->rule_hash_table.buckets == NULL || ctx->rule_hash_table.entry_count == 0) {
+        return 0;
+    }
+    
+    /* 计算哈希键 / Calculate hash key / Hash-Schlüssel berechnen */
+    uint64_t hash_key = calculate_rule_hash_key(source_plugin, source_interface, source_param_index);
+    if (hash_key == 0) {
+        return 0;
+    }
+    
+    size_t bucket = hash_key % ctx->rule_hash_table.bucket_count;
+    rule_hash_node_t* node = ctx->rule_hash_table.buckets[bucket];
+    
+    /* 查找匹配的规则索引 / Find matching rule indices / Passende Regelindizes suchen */
+    size_t min_index = SIZE_MAX;
+    size_t max_index = 0;
+    int found = 0;
+    
+    while (node != NULL) {
+        if (node->hash_key == hash_key) {
+            pointer_transfer_rule_t* rule = &ctx->rules[node->rule_index];
+            if (rule->enabled && 
+                rule->source_plugin != NULL && strcmp(rule->source_plugin, source_plugin) == 0 &&
+                rule->source_interface != NULL && strcmp(rule->source_interface, source_interface) == 0 &&
+                rule->source_param_index == source_param_index) {
+                if (node->rule_index < min_index) {
+                    min_index = node->rule_index;
+                }
+                if (node->rule_index > max_index) {
+                    max_index = node->rule_index;
+                }
+                found = 1;
+            }
+        }
+        node = node->next;
+    }
+    
+    if (found) {
+        *start_index = min_index;
+        *end_index = max_index;
+        return 1;
+    }
+    
+    return 0;
+}
+
+/**
+ * @brief 构建规则缓存 / Build rule cache / Regel-Cache erstellen
+ * @return 成功返回0，失败返回非0 / Returns 0 on success, non-zero on failure / Gibt 0 bei Erfolg zurück, ungleich 0 bei Fehler
+ */
+int build_rule_cache(void) {
+    pointer_transfer_context_t* ctx = get_global_context();
+    
+    /* 释放旧缓存 / Free old cache / Alten Cache freigeben */
+    if (ctx->cached_rule_indices != NULL) {
+        free(ctx->cached_rule_indices);
+        ctx->cached_rule_indices = NULL;
+        ctx->cached_rule_count = 0;
+        ctx->cached_rule_capacity = 0;
+    }
+    
+    if (ctx->rule_count == 0 || ctx->rules == NULL) {
+        return 0;
+    }
+    
+    /* 统计需要缓存的规则数量 / Count rules that need caching / Regeln zählen, die gecacht werden müssen */
+    size_t cache_count = 0;
+    for (size_t i = 0; i < ctx->rule_count; i++) {
+        if (ctx->rules[i].cache_self && ctx->rules[i].enabled) {
+            cache_count++;
+        }
+    }
+    
+    if (cache_count == 0) {
+        return 0;
+    }
+    
+    /* 分配缓存数组 / Allocate cache array / Cache-Array zuweisen */
+    ctx->cached_rule_indices = (size_t*)malloc(cache_count * sizeof(size_t));
+    if (ctx->cached_rule_indices == NULL) {
+        return -1;
+    }
+    
+    /* 填充缓存数组 / Fill cache array / Cache-Array füllen */
+    size_t cache_index = 0;
+    for (size_t i = 0; i < ctx->rule_count; i++) {
+        if (ctx->rules[i].cache_self && ctx->rules[i].enabled) {
+            ctx->cached_rule_indices[cache_index++] = i;
+        }
+    }
+    
+    ctx->cached_rule_count = cache_count;
+    ctx->cached_rule_capacity = cache_count;
+    
+    internal_log_write("INFO", "Built rule cache with %zu cached rules", cache_count);
+    return 0;
+}
+
+/**
+ * @brief 获取缓存的规则数量 / Get cached rule count / Anzahl gecachter Regeln abrufen
+ * @return 缓存的规则数量 / Cached rule count / Anzahl gecachter Regeln
+ */
+size_t get_cached_rule_count(void) {
+    pointer_transfer_context_t* ctx = get_global_context();
+    return ctx->cached_rule_count;
+}
+
+/**
+ * @brief 获取缓存的规则索引数组 / Get cached rule indices array / Gecachte Regelindex-Array abrufen
+ * @return 缓存的规则索引数组指针 / Cached rule indices array pointer / Zeiger auf gecachte Regelindex-Array
+ */
+const size_t* get_cached_rule_indices(void) {
+    pointer_transfer_context_t* ctx = get_global_context();
+    return ctx->cached_rule_indices;
 }
 
 /**
@@ -198,6 +499,13 @@ void cleanup_context(void) {
         ctx->loaded_plugins = NULL;
     }
     free_transfer_rules();
+    free_hash_table(&ctx->rule_hash_table);
+    if (ctx->cached_rule_indices != NULL) {
+        free(ctx->cached_rule_indices);
+        ctx->cached_rule_indices = NULL;
+        ctx->cached_rule_count = 0;
+        ctx->cached_rule_capacity = 0;
+    }
     if (ctx->entry_plugin_name != NULL) {
         free(ctx->entry_plugin_name);
         ctx->entry_plugin_name = NULL;

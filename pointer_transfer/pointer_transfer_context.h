@@ -58,6 +58,41 @@ void init_context(void);
  */
 void cleanup_context(void);
 
+/**
+ * @brief 构建规则索引 / Build rule index / Regelindex erstellen
+ * @return 成功返回0，失败返回非0 / Returns 0 on success, non-zero on failure / Gibt 0 bei Erfolg zurück, ungleich 0 bei Fehler
+ */
+int build_rule_index(void);
+
+/**
+ * @brief 查找规则索引范围 / Find rule index range / Regelindex-Bereich suchen
+ * @param source_plugin 源插件名称 / Source plugin name / Quell-Plugin-Name
+ * @param source_interface 源接口名称 / Source interface name / Quell-Schnittstellenname
+ * @param source_param_index 源参数索引 / Source parameter index / Quell-Parameterindex
+ * @param start_index 输出起始索引指针 / Output start index pointer / Ausgabe-Startindex-Zeiger
+ * @param end_index 输出结束索引指针 / Output end index pointer / Ausgabe-Endindex-Zeiger
+ * @return 找到返回1，未找到返回0 / Returns 1 if found, 0 if not found / Gibt 1 zurück wenn gefunden, 0 wenn nicht gefunden
+ */
+int find_rule_index_range(const char* source_plugin, const char* source_interface, int source_param_index, size_t* start_index, size_t* end_index);
+
+/**
+ * @brief 构建规则缓存 / Build rule cache / Regel-Cache erstellen
+ * @return 成功返回0，失败返回非0 / Returns 0 on success, non-zero on failure / Gibt 0 bei Erfolg zurück, ungleich 0 bei Fehler
+ */
+int build_rule_cache(void);
+
+/**
+ * @brief 获取缓存的规则数量 / Get cached rule count / Anzahl gecachter Regeln abrufen
+ * @return 缓存的规则数量 / Cached rule count / Anzahl gecachter Regeln
+ */
+size_t get_cached_rule_count(void);
+
+/**
+ * @brief 获取缓存的规则索引数组 / Get cached rule indices array / Gecachte Regelindex-Array abrufen
+ * @return 缓存的规则索引数组指针 / Cached rule indices array pointer / Zeiger auf gecachte Regelindex-Array
+ */
+const size_t* get_cached_rule_indices(void);
+
 #ifdef __cplusplus
 }
 #endif

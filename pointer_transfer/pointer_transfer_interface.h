@@ -20,6 +20,14 @@ extern "C" {
 /* call_function_generic已迁移至pointer_transfer_platform.c，替代函数为pt_platform_safe_call / call_function_generic migrated to pointer_transfer_platform.c, replaced by pt_platform_safe_call / call_function_generic nach pointer_transfer_platform.c migriert, ersetzt durch pt_platform_safe_call */
 
 /**
+ * @brief 查找目标接口状态（不创建）/ Find target interface state (without creating) / Ziel-Schnittstellenstatus suchen (ohne Erstellung)
+ * @param plugin_name 插件名称 / Plugin name / Plugin-Name
+ * @param interface_name 接口名称 / Interface name / Schnittstellenname
+ * @return 成功返回接口状态指针，不存在返回NULL / Returns interface state pointer on success, NULL if not found / Gibt Schnittstellenstatus-Zeiger bei Erfolg zurück, NULL wenn nicht gefunden
+ */
+target_interface_state_t* find_interface_state(const char* plugin_name, const char* interface_name);
+
+/**
  * @brief 查找或创建目标接口状态 / Find or create target interface state / Ziel-Schnittstellenstatus suchen oder erstellen
  * @param plugin_name 插件名称 / Plugin name / Plugin-Name
  * @param interface_name 接口名称 / Interface name / Schnittstellenname

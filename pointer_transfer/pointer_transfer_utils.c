@@ -553,6 +553,10 @@ void free_single_rule(pointer_transfer_rule_t* rule) {
         free(rule->condition);
         rule->condition = NULL;
     }
+    if (rule->set_group != NULL) {
+        free(rule->set_group);
+        rule->set_group = NULL;
+    }
 }
 
 

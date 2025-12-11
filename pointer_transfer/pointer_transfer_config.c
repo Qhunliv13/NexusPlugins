@@ -11,6 +11,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
+#include <string.h>
+#include <limits.h>
 
 /**
  * @brief 查询.nxpt文件加载状态 / Query .nxpt file load status / .nxpt-Datei-Ladestatus abfragen
@@ -279,6 +281,8 @@ int load_transfer_rules(const char* config_path) {
                     temp_rules[temp_rules_count].target_param_index = -1;
                     temp_rules[temp_rules_count].transfer_mode = TRANSFER_MODE_UNICAST;
                     temp_rules[temp_rules_count].enabled = 1;
+                    temp_rules[temp_rules_count].cache_self = 0;
+                    temp_rules[temp_rules_count].set_group = NULL;
                     temp_rules_count++;
                 } else {
                     current_rule_index = -1;
@@ -338,6 +342,12 @@ int load_transfer_rules(const char* config_path) {
                     rule->enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0) ? 1 : 0;
                 } else if (strcmp(key, "Condition") == 0) {
                     rule->condition = allocate_string(value);
+                } else if (strcmp(key, "CacheSelf") == 0) {
+                    rule->cache_self = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0) ? 1 : 0;
+                } else if (strcmp(key, "SetGroup") == 0) {
+                    rule->set_group = allocate_string(value);
+                    internal_log_write("INFO", "Parsed SetGroup=%s for rule index %d (temp_rules_count=%zu)", 
+                        value, current_rule_index, temp_rules_count);
                 }
             }
         }
@@ -413,6 +423,10 @@ int load_transfer_rules(const char* config_path) {
             if (src_rule->condition != NULL) {
                 dst_rule->condition = allocate_string(src_rule->condition);
             }
+            if (src_rule->set_group != NULL) {
+                dst_rule->set_group = allocate_string(src_rule->set_group);
+            }
+            dst_rule->cache_self = src_rule->cache_self;
         }
     }
     
@@ -423,14 +437,13 @@ int load_transfer_rules(const char* config_path) {
     
     ctx->rule_count = new_rule_count;
     
-    /* TODO: 待实现规则索引构建功能
-     * 在此处构建rule_index索引表，索引键格式: "source_plugin.source_interface.source_param_index"
-     * 实现后可优化后续规则查找性能，将O(n)线性查找优化为O(1)或O(log n)
-     * 建议实现方案:
-     *   1. 哈希表方案: 使用字符串哈希，O(1)查找
-     *   2. 排序数组+二分查找: 按key排序，O(log n)查找
-     *   3. 多级索引: 按plugin -> interface -> param_index分层索引
-     */
+    /* 构建规则索引 / Build rule index / Regelindex erstellen */
+    if (build_rule_index() != 0) {
+        internal_log_write("WARNING", "Failed to build rule index, falling back to linear search");
+    }
+    
+    /* 构建规则缓存 / Build rule cache / Regel-Cache erstellen */
+    build_rule_cache();
     
     internal_log_write("INFO", "Parsed %zu lines, found %zu rules, total rules: %zu", line_count, temp_rules_count, ctx->rule_count);
     

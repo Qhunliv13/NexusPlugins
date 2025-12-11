@@ -50,6 +50,8 @@ typedef struct {
     transfer_mode_t transfer_mode; /**< 传递模式 / Transfer mode / Übertragungsmodus */
     int enabled;                  /**< 启用标志 / Enabled flag / Aktivierungsflag */
     char* condition;              /**< 传递条件 / Transfer condition / Übertragungsbedingung */
+    int cache_self;               /**< 缓存自身规则标志 / Cache self rule flag / Selbst-Regel-Cache-Flag */
+    char* set_group;              /**< 设置组名称 / Set group name / Set-Gruppenname */
 } pointer_transfer_rule_t;
 
 /**
@@ -86,17 +88,22 @@ typedef struct {
 } target_interface_state_t;
 
 /**
- * @brief 规则索引项结构体 / Rule index entry structure / Regelindex-Eintrag-Struktur
- * @todo TODO: 待实现规则索引功能，用于优化规则查找性能
- *       - 索引键格式: "source_plugin.source_interface.source_param_index"
- *       - 实现哈希表或排序数组+二分查找，将O(n)线性查找优化为O(1)或O(log n)
- *       - 在load_transfer_rules()加载规则后构建索引
- *       - 在规则查找时使用索引加速匹配
+ * @brief 哈希表桶节点结构体 / Hash table bucket node structure / Hash-Tabelle-Bucket-Knoten-Struktur
+ */
+typedef struct rule_hash_node_s {
+    uint64_t hash_key;            /**< 哈希键（整数） / Hash key (integer) / Hash-Schlüssel (Ganzzahl) */
+    size_t rule_index;            /**< 规则索引 / Rule index / Regelindex */
+    struct rule_hash_node_s* next; /**< 下一个节点（链式冲突解决） / Next node (chaining collision resolution) / Nächster Knoten (Verkettungskollisionsauflösung) */
+} rule_hash_node_t;
+
+/**
+ * @brief 规则哈希表结构体 / Rule hash table structure / Regel-Hash-Tabelle-Struktur
  */
 typedef struct {
-    size_t rule_index;            /**< 规则索引 / Rule index / Regelindex */
-    char* key;                    /**< 索引键 / Index key / Indexschlüssel */
-} rule_index_entry_t;
+    rule_hash_node_t** buckets;   /**< 桶数组 / Bucket array / Bucket-Array */
+    size_t bucket_count;          /**< 桶数量 / Bucket count / Bucket-Anzahl */
+    size_t entry_count;           /**< 条目数量 / Entry count / Eintragsanzahl */
+} rule_hash_table_t;
 
 /**
  * @brief 插件路径缓存项结构体 / Plugin path cache entry structure / Plugin-Pfad-Cache-Eintrag-Struktur
@@ -126,11 +133,10 @@ typedef struct {
     pointer_transfer_rule_t* rules; /**< 传递规则数组 / Transfer rules array / Übertragungsregel-Array */
     size_t rule_count;            /**< 规则数量 / Rule count / Regelanzahl */
     size_t rule_capacity;        /**< 规则数组容量 / Rule array capacity / Regel-Array-Kapazität */
-    rule_index_entry_t* rule_index; /**< 规则索引 / Rule index / Regelindex 
-                                      * @todo TODO: 待实现 - 用于快速查找规则的索引表，当前未使用
-                                      *       实现后可优化CallPlugin()和TransferPointer()中的规则匹配性能
-                                      */
-    size_t rule_index_count;      /**< 规则索引数量 / Rule index count / Regelindex-Anzahl */
+    rule_hash_table_t rule_hash_table; /**< 规则哈希表 / Rule hash table / Regel-Hash-Tabelle */
+    size_t* cached_rule_indices;  /**< 缓存的规则索引数组 / Cached rule indices array / Gecachte Regelindex-Array */
+    size_t cached_rule_count;     /**< 缓存的规则数量 / Cached rule count / Anzahl gecachter Regeln */
+    size_t cached_rule_capacity; /**< 缓存的规则容量 / Cached rule capacity / Kapazität gecachter Regeln */
     loaded_plugin_info_t* loaded_plugins; /**< 已加载的插件数组 / Loaded plugins array / Geladenes Plugin-Array */
     size_t loaded_plugin_count;   /**< 已加载插件数量 / Loaded plugin count / Anzahl geladener Plugins */
     size_t loaded_plugin_capacity; /**< 已加载插件数组容量 / Loaded plugin array capacity / Geladenes Plugin-Array-Kapazität */
