@@ -50,7 +50,7 @@ target_interface_state_t* find_or_create_interface_state(const char* plugin_name
         return NULL;
     }
     
-    /* 先尝试查找已存在的接口状态 / First try to find existing interface state / Zuerst versuchen, vorhandenen Schnittstellenstatus zu finden */
+    /* 首先尝试查找已存在的接口状态 / First try to find existing interface state / Zuerst versuchen, vorhandenen Schnittstellenstatus zu finden */
     target_interface_state_t* existing_state = find_interface_state(plugin_name, interface_name);
     if (existing_state != NULL) {
         return existing_state;
@@ -395,7 +395,7 @@ target_interface_state_t* find_or_create_interface_state(const char* plugin_name
      
     int required_param_count = state->param_count;
     if (state->is_variadic) {
-        /* 可变参数接口：先计算实际就绪的参数数量（连续） / Variadic interface: calculate actual ready parameter count (consecutive) / Variabler Parameter-Interface: Tatsächliche bereite Parameteranzahl berechnen (aufeinanderfolgend) */
+        /* 可变参数接口：首先计算实际就绪的参数数量（连续） / Variadic interface: calculate actual ready parameter count (consecutive) / Variabler Parameter-Interface: Tatsächliche bereite Parameteranzahl berechnen (aufeinanderfolgend) */
         int actual_ready_count = 0;
         if (state->param_ready != NULL) {
             for (int i = 0; i < state->param_count; i++) {
@@ -574,25 +574,11 @@ target_interface_state_t* find_or_create_interface_state(const char* plugin_name
                  rule->target_plugin, rule->target_interface, actual_param_count, return_type, return_size);
     
     if (!state->validation_done) {
-         pt_param_pack_t* test_pack = pt_create_param_pack(actual_param_count, state->param_types, state->param_values, state->param_sizes);
-         if (test_pack != NULL) {
-             int32_t validation_result = pt_validate_param_pack(test_pack);
-             if (validation_result != 0) {
-                 internal_log_write("ERROR", "Plugin %s.%s validation failed: invalid param pack structure", 
-                                   rule->target_plugin, rule->target_interface);
-                 pt_free_param_pack(test_pack);
-                 if (struct_buffer != NULL) {
-                     free(struct_buffer);
-                     struct_buffer = NULL;
-                 }
-                 return -1;
-             }
-             pt_free_param_pack(test_pack);
-             state->validation_done = 1;
-             internal_log_write("INFO", "Plugin %s.%s validation passed: compatible with currying API", 
-                               rule->target_plugin, rule->target_interface);
-         } else {
-             internal_log_write("WARNING", "Failed to create test param pack for validation of %s.%s", 
+         /* 使用pt_validate_plugin_function进行完整验证（包括时间戳检查和.nxpv文件生成）/ Use pt_validate_plugin_function for full validation (including timestamp check and .nxpv file generation) / pt_validate_plugin_function für vollständige Validierung verwenden (einschließlich Zeitstempelprüfung und .nxpv-Dateigenerierung) */
+         int32_t validation_result = pt_validate_plugin_function(state->func_ptr, rule->target_plugin_path, 
+                                                                 rule->target_interface, actual_param_count, return_type);
+         if (validation_result != 0) {
+             internal_log_write("ERROR", "Plugin %s.%s validation failed: function validation returned error", 
                                rule->target_plugin, rule->target_interface);
              if (struct_buffer != NULL) {
                  free(struct_buffer);
@@ -600,6 +586,9 @@ target_interface_state_t* find_or_create_interface_state(const char* plugin_name
              }
              return -1;
          }
+         state->validation_done = 1;
+         internal_log_write("INFO", "Plugin %s.%s validation passed: compatible with currying API", 
+                           rule->target_plugin, rule->target_interface);
      }
      
      if (state->param_types == NULL || state->param_values == NULL) {
@@ -736,7 +725,7 @@ target_interface_state_t* find_or_create_interface_state(const char* plugin_name
                             continue;
                         }
                     } else if (should_check_group && !is_min_param_index) {
-                        /* 设置组检查：接口状态不存在，但同一组内有规则会设置后续参数，且当前规则不是参数索引最小的规则，跳过当前规则等待接口状态创建 / Set group check: interface state not exists, but rules in same group will set subsequent parameters, and current rule is not the one with minimum parameter index, skip current rule and wait for interface state creation / Set-Gruppenprüfung: Schnittstellenstatus existiert nicht, aber Regeln in derselben Gruppe setzen nachfolgende Parameter, und aktuelle Regel ist nicht die mit minimalem Parameterindex, aktuelle Regel überspringen und auf Schnittstellenstatus-Erstellung warten */
+                        /* 设置组检查：接口状态不存在，但同一组内有规则会设置后续参数，且当前规则不是参数索引最小的规则，跳过当前规则等待接口状态创建 / Set group check: interface state does not exist, but rules in same group will set subsequent parameters, and current rule is not the one with minimum parameter index, skip current rule and wait for interface state creation / Set-Gruppenprüfung: Schnittstellenstatus existiert nicht, aber Regeln in derselben Gruppe setzen nachfolgende Parameter, und aktuelle Regel ist nicht die mit minimalem Parameterindex, aktuelle Regel überspringen und auf Schnittstellenstatus-Erstellung warten */
                         internal_log_write("INFO", "Set group check: skipping rule %zu (target state not exists, subsequent rule will set parameter, current rule is not minimum param index)", i);
                         continue;
                     }

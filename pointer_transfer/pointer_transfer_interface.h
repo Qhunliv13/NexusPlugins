@@ -17,7 +17,7 @@ extern "C" {
 
 /* NXLD标准调用约定 / NXLD standard calling convention / NXLD-Standard-Aufrufkonvention */
 
-/* call_function_generic已迁移至pointer_transfer_platform.c，替代函数为pt_platform_safe_call / call_function_generic migrated to pointer_transfer_platform.c, replaced by pt_platform_safe_call / call_function_generic nach pointer_transfer_platform.c migriert, ersetzt durch pt_platform_safe_call */
+/* call_function_generic位于pointer_transfer_platform.c，替代函数为pt_platform_safe_call / call_function_generic is located in pointer_transfer_platform.c, replacement function is pt_platform_safe_call / call_function_generic befindet sich in pointer_transfer_platform.c, Ersatzfunktion ist pt_platform_safe_call */
 
 /**
  * @brief 查找目标接口状态（不创建）/ Find target interface state (without creating) / Ziel-Schnittstellenstatus suchen (ohne Erstellung)

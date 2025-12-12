@@ -93,6 +93,18 @@ size_t get_cached_rule_count(void);
  */
 const size_t* get_cached_rule_indices(void);
 
+/**
+ * @brief 检查插件路径是否在忽略列表中 / Check if plugin path is in ignore list / Prüfen, ob Plugin-Pfad in Ignorierliste ist
+ * @param plugin_path 插件路径（可以是绝对路径或相对路径） / Plugin path (can be absolute or relative path) / Plugin-Pfad (kann absoluter oder relativer Pfad sein)
+ * @return 在忽略列表中返回1，否则返回0 / Returns 1 if in ignore list, 0 otherwise / Gibt 1 zurück, wenn in Ignorierliste, sonst 0
+ */
+int is_plugin_ignored(const char* plugin_path);
+
+/**
+ * @brief 初始化默认忽略插件列表 / Initialize default ignored plugins list / Standard-Ignorierliste für Plugins initialisieren
+ */
+void initialize_default_ignore_plugins(void);
+
 #ifdef __cplusplus
 }
 #endif

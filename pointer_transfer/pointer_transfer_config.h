@@ -42,6 +42,11 @@ int is_nxpt_loaded(const char* plugin_name);
  */
 int mark_nxpt_loaded(const char* plugin_name, const char* nxpt_path);
 
+/**
+ * @brief 清理已加载.nxpt文件哈希表 / Cleanup loaded .nxpt files hash table / Geladene .nxpt-Dateien-Hash-Tabelle bereinigen
+ */
+void free_nxpt_hash_table_internal(void);
+
 #ifdef __cplusplus
 }
 #endif

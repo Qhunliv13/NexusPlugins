@@ -356,7 +356,7 @@ POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL TransferPointer(
         size_t matched_count = 0;
         size_t success_count = 0;
         
-        /* 使用索引快速查找匹配规则 / Use index to quickly find matching rules / Index verwenden, um passende Regeln schnell zu finden */
+        /* 使用索引查找匹配规则 / Use index to find matching rules / Index verwenden, um übereinstimmende Regeln zu finden */
         size_t start_index = 0;
         size_t end_index = 0;
         int use_index = find_rule_index_range(source_plugin_name, source_interface_name, source_param_index, &start_index, &end_index);
@@ -408,7 +408,7 @@ POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL TransferPointer(
             }
             
             /* UNICAST规则 / UNICAST rules / UNICAST-Regeln */
-            /* UNICAST模式：允许传递给同一个接口的不同参数索引，只有当找到完全相同的目标位置时才停止 / UNICAST mode: allow passing to different parameter indices of the same interface, only stop when exact duplicate target is found / UNICAST-Modus: Übergabe an verschiedene Parameterindizes derselben Schnittstelle zulassen, nur stoppen, wenn exaktes doppeltes Ziel gefunden wird */
+            /* UNICAST模式：允许传递给同一接口的不同参数索引，仅在找到完全相同的目标位置时停止 / UNICAST mode: allow passing to different parameter indices of the same interface, only stop when exact duplicate target is found / UNICAST-Modus: Übergabe an verschiedene Parameterindizes derselben Schnittstelle zulassen, nur stoppen, wenn exakt doppeltes Ziel gefunden wird */
             for (size_t i = start_index; i <= end_index && i < ctx->rule_count; i++) {
                 pointer_transfer_rule_t* rule = &ctx->rules[i];
                 if (!rule->enabled) {
@@ -443,7 +443,7 @@ POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL TransferPointer(
                                 internal_log_write("WARNING", "Failed to call target plugin interface (error=%d)", call_result);
                             }
                             
-                            /* 检查是否有其他规则匹配完全相同的目标位置（插件+接口+参数索引） / Check if other rules match the exact same target location (plugin+interface+parameter index) / Prüfen, ob andere Regeln exakt dieselbe Zielposition (Plugin+Schnittstelle+Parameterindex) abgleichen */
+                            /* 检查是否存在匹配完全相同目标位置的其他规则（插件+接口+参数索引） / Check if other rules match the exact same target location (plugin+interface+parameter index) / Prüfen, ob andere Regeln die exakt gleiche Zielposition (Plugin+Schnittstelle+Parameterindex) abgleichen */
                             int has_exact_duplicate = 0;
                             for (size_t j = i + 1; j <= end_index && j < ctx->rule_count; j++) {
                                 pointer_transfer_rule_t* next_rule = &ctx->rules[j];
@@ -462,7 +462,7 @@ POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL TransferPointer(
                                     break;
                                 }
                             }
-                            /* 只有在找到完全相同的目标位置时才停止，允许传递给同一接口的不同参数 / Only stop when exact duplicate target is found, allow passing to different parameters of the same interface / Nur stoppen, wenn exaktes doppeltes Ziel gefunden wird, Übergabe an verschiedene Parameter derselben Schnittstelle zulassen */
+                            /* 仅在找到完全相同的目标位置时停止，允许传递给同一接口的不同参数 / Only stop when exact duplicate target is found, allow passing to different parameters of the same interface / Nur stoppen, wenn exakt doppeltes Ziel gefunden wird, Übergabe an verschiedene Parameter derselben Schnittstelle zulassen */
                             if (has_exact_duplicate) {
                                 break;
                             }
@@ -471,7 +471,7 @@ POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL TransferPointer(
                 }
             }
         } else {
-            /* 回退到线性搜索 / Fallback to linear search / Fallback auf lineare Suche */
+            /* 回退到线性查找 / Fall back to linear search / Fallback auf lineare Suche */
             /* BROADCAST和MULTICAST规则 / BROADCAST and MULTICAST rules / BROADCAST- und MULTICAST-Regeln */
             for (size_t i = 0; i < ctx->rule_count; i++) {
                 pointer_transfer_rule_t* rule = &ctx->rules[i];
@@ -518,7 +518,7 @@ POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL TransferPointer(
             }
             
             /* UNICAST规则 / UNICAST rules / UNICAST-Regeln */
-            /* UNICAST模式：允许传递给同一个接口的不同参数索引，只有当找到完全相同的目标位置时才停止 / UNICAST mode: allow passing to different parameter indices of the same interface, only stop when exact duplicate target is found / UNICAST-Modus: Übergabe an verschiedene Parameterindizes derselben Schnittstelle zulassen, nur stoppen, wenn exaktes doppeltes Ziel gefunden wird */
+            /* UNICAST模式：允许传递给同一接口的不同参数索引，仅在找到完全相同的目标位置时停止 / UNICAST mode: allow passing to different parameter indices of the same interface, only stop when exact duplicate target is found / UNICAST-Modus: Übergabe an verschiedene Parameterindizes derselben Schnittstelle zulassen, nur stoppen, wenn exakt doppeltes Ziel gefunden wird */
             for (size_t i = 0; i < ctx->rule_count; i++) {
                 pointer_transfer_rule_t* rule = &ctx->rules[i];
                 if (!rule->enabled) {
@@ -553,7 +553,7 @@ POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL TransferPointer(
                                 internal_log_write("WARNING", "Failed to call target plugin interface (error=%d)", call_result);
                             }
                             
-                            /* 检查是否有其他规则匹配完全相同的目标位置（插件+接口+参数索引） / Check if other rules match the exact same target location (plugin+interface+parameter index) / Prüfen, ob andere Regeln exakt dieselbe Zielposition (Plugin+Schnittstelle+Parameterindex) abgleichen */
+                            /* 检查是否存在匹配完全相同目标位置的其他规则（插件+接口+参数索引） / Check if other rules match the exact same target location (plugin+interface+parameter index) / Prüfen, ob andere Regeln die exakt gleiche Zielposition (Plugin+Schnittstelle+Parameterindex) abgleichen */
                             int has_exact_duplicate = 0;
                             for (size_t j = i + 1; j < ctx->rule_count; j++) {
                                 pointer_transfer_rule_t* next_rule = &ctx->rules[j];
@@ -572,7 +572,7 @@ POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL TransferPointer(
                                     break;
                                 }
                             }
-                            /* 只有在找到完全相同的目标位置时才停止，允许传递给同一接口的不同参数 / Only stop when exact duplicate target is found, allow passing to different parameters of the same interface / Nur stoppen, wenn exaktes doppeltes Ziel gefunden wird, Übergabe an verschiedene Parameter derselben Schnittstelle zulassen */
+                            /* 仅在找到完全相同的目标位置时停止，允许传递给同一接口的不同参数 / Only stop when exact duplicate target is found, allow passing to different parameters of the same interface / Nur stoppen, wenn exakt doppeltes Ziel gefunden wird, Übergabe an verschiedene Parameter derselben Schnittstelle zulassen */
                             if (has_exact_duplicate) {
                                 break;
                             }
@@ -612,7 +612,7 @@ POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL CallPlugin(const
     size_t success_count = 0;
     
     if (ctx->rule_count > 0 && ctx->rules != NULL) {
-        /* 使用索引快速定位匹配规则 / Use index to quickly locate matching rules / Index verwenden, um passende Regeln schnell zu lokalisieren */
+        /* 使用索引定位匹配规则 / Use index to locate matching rules / Index verwenden, um übereinstimmende Regeln zu lokalisieren */
         size_t start_index = 0;
         size_t end_index = 0;
         int use_index = find_rule_index_range(source_plugin_name, source_interface_name, param_index, &start_index, &end_index);
@@ -672,7 +672,7 @@ POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL CallPlugin(const
             }
             
             /* UNICAST规则 / UNICAST rules / UNICAST-Regeln */
-            /* UNICAST模式：允许传递给同一个接口的不同参数索引，只有当找到完全相同的目标位置时才停止 / UNICAST mode: allow passing to different parameter indices of the same interface, only stop when exact duplicate target is found / UNICAST-Modus: Übergabe an verschiedene Parameterindizes derselben Schnittstelle zulassen, nur stoppen, wenn exaktes doppeltes Ziel gefunden wird */
+            /* UNICAST模式：允许传递给同一接口的不同参数索引，仅在找到完全相同的目标位置时停止 / UNICAST mode: allow passing to different parameter indices of the same interface, only stop when exact duplicate target is found / UNICAST-Modus: Übergabe an verschiedene Parameterindizes derselben Schnittstelle zulassen, nur stoppen, wenn exakt doppeltes Ziel gefunden wird */
             for (size_t i = start_index; i <= end_index && i < ctx->rule_count; i++) {
                 pointer_transfer_rule_t* rule = &ctx->rules[i];
                 if (!rule->enabled) {
@@ -707,7 +707,7 @@ POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL CallPlugin(const
                                 internal_log_write("WARNING", "Failed to call target plugin interface (error=%d)", call_result);
                             }
                             
-                            /* 检查是否有其他规则匹配完全相同的目标位置（插件+接口+参数索引） / Check if other rules match the exact same target location (plugin+interface+parameter index) / Prüfen, ob andere Regeln exakt dieselbe Zielposition (Plugin+Schnittstelle+Parameterindex) abgleichen */
+                            /* 检查是否存在匹配完全相同目标位置的其他规则（插件+接口+参数索引） / Check if other rules match the exact same target location (plugin+interface+parameter index) / Prüfen, ob andere Regeln die exakt gleiche Zielposition (Plugin+Schnittstelle+Parameterindex) abgleichen */
                             int has_exact_duplicate = 0;
                             for (size_t j = i + 1; j <= end_index && j < ctx->rule_count; j++) {
                                 pointer_transfer_rule_t* next_rule = &ctx->rules[j];
@@ -726,7 +726,7 @@ POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL CallPlugin(const
                                     break;
                                 }
                             }
-                            /* 只有在找到完全相同的目标位置时才停止，允许传递给同一接口的不同参数 / Only stop when exact duplicate target is found, allow passing to different parameters of the same interface / Nur stoppen, wenn exaktes doppeltes Ziel gefunden wird, Übergabe an verschiedene Parameter derselben Schnittstelle zulassen */
+                            /* 仅在找到完全相同的目标位置时停止，允许传递给同一接口的不同参数 / Only stop when exact duplicate target is found, allow passing to different parameters of the same interface / Nur stoppen, wenn exakt doppeltes Ziel gefunden wird, Übergabe an verschiedene Parameter derselben Schnittstelle zulassen */
                             if (has_exact_duplicate) {
                                 break;
                             }
@@ -735,7 +735,7 @@ POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL CallPlugin(const
                 }
             }
         } else {
-            /* 回退到线性搜索 / Fallback to linear search / Fallback auf lineare Suche */
+            /* 回退到线性查找 / Fall back to linear search / Fallback auf lineare Suche */
             /* BROADCAST和MULTICAST规则 / BROADCAST and MULTICAST rules / BROADCAST- und MULTICAST-Regeln */
             for (size_t i = 0; i < ctx->rule_count; i++) {
                 pointer_transfer_rule_t* rule = &ctx->rules[i];
@@ -789,7 +789,7 @@ POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL CallPlugin(const
             }
             
             /* UNICAST规则 / UNICAST rules / UNICAST-Regeln */
-            /* UNICAST模式：允许传递给同一个接口的不同参数索引，只有当找到完全相同的目标位置时才停止 / UNICAST mode: allow passing to different parameter indices of the same interface, only stop when exact duplicate target is found / UNICAST-Modus: Übergabe an verschiedene Parameterindizes derselben Schnittstelle zulassen, nur stoppen, wenn exaktes doppeltes Ziel gefunden wird */
+            /* UNICAST模式：允许传递给同一接口的不同参数索引，仅在找到完全相同的目标位置时停止 / UNICAST mode: allow passing to different parameter indices of the same interface, only stop when exact duplicate target is found / UNICAST-Modus: Übergabe an verschiedene Parameterindizes derselben Schnittstelle zulassen, nur stoppen, wenn exakt doppeltes Ziel gefunden wird */
             for (size_t i = 0; i < ctx->rule_count; i++) {
                 pointer_transfer_rule_t* rule = &ctx->rules[i];
                 if (!rule->enabled) {
@@ -824,7 +824,7 @@ POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL CallPlugin(const
                                 internal_log_write("WARNING", "Failed to call target plugin interface (error=%d)", call_result);
                             }
                             
-                            /* 检查是否有其他规则匹配完全相同的目标位置（插件+接口+参数索引） / Check if other rules match the exact same target location (plugin+interface+parameter index) / Prüfen, ob andere Regeln exakt dieselbe Zielposition (Plugin+Schnittstelle+Parameterindex) abgleichen */
+                            /* 检查是否存在匹配完全相同目标位置的其他规则（插件+接口+参数索引） / Check if other rules match the exact same target location (plugin+interface+parameter index) / Prüfen, ob andere Regeln die exakt gleiche Zielposition (Plugin+Schnittstelle+Parameterindex) abgleichen */
                             int has_exact_duplicate = 0;
                             for (size_t j = i + 1; j < ctx->rule_count; j++) {
                                 pointer_transfer_rule_t* next_rule = &ctx->rules[j];
@@ -843,7 +843,7 @@ POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL CallPlugin(const
                                     break;
                                 }
                             }
-                            /* 只有在找到完全相同的目标位置时才停止，允许传递给同一接口的不同参数 / Only stop when exact duplicate target is found, allow passing to different parameters of the same interface / Nur stoppen, wenn exaktes doppeltes Ziel gefunden wird, Übergabe an verschiedene Parameter derselben Schnittstelle zulassen */
+                            /* 仅在找到完全相同的目标位置时停止，允许传递给同一接口的不同参数 / Only stop when exact duplicate target is found, allow passing to different parameters of the same interface / Nur stoppen, wenn exakt doppeltes Ziel gefunden wird, Übergabe an verschiedene Parameter derselben Schnittstelle zulassen */
                             if (has_exact_duplicate) {
                                 break;
                             }
@@ -892,7 +892,7 @@ static void plugin_init(void) {
     char* nxpt_path = (char*)malloc(nxpt_path_size);
     if (nxpt_path != NULL) {
         if (build_nxpt_path(dll_path, nxpt_path, nxpt_path_size) == 0) {
-            /* 加载调度器配置文件本身的规则 / Load scheduler config file's own rules / Eigene Regeln der Scheduler-Konfigurationsdatei laden */
+            /* 加载插件配置文件本身的规则 / Load plugin config file's own rules / Eigene Regeln der Plugin-Konfigurationsdatei laden */
             load_transfer_rules(nxpt_path);
             
             if (parse_entry_plugin_config(nxpt_path) == 0) {

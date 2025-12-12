@@ -8,6 +8,7 @@
 
 #include "nxld_plugin_interface.h"
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -123,7 +124,25 @@ typedef struct {
 } loaded_nxpt_info_t;
 
 /**
- * @brief 指针传输上下文结构体 / Pointer transfer context structure / Zeigerübertragungskontext-Struktur
+ * @brief 已加载.nxpt文件哈希表节点结构体 / Loaded .nxpt file hash table node structure / Geladene .nxpt-Datei-Hash-Tabelle-Knoten-Struktur
+ */
+typedef struct nxpt_hash_node_s {
+    uint64_t hash_key;            /**< 哈希键（插件名称的哈希值） / Hash key (hash value of plugin name) / Hash-Schlüssel (Hash-Wert des Plugin-Namens) */
+    size_t array_index;           /**< 数组索引 / Array index / Array-Index */
+    struct nxpt_hash_node_s* next; /**< 下一个节点（链式冲突解决） / Next node (chaining collision resolution) / Nächster Knoten (Verkettungskollisionsauflösung) */
+} nxpt_hash_node_t;
+
+/**
+ * @brief 已加载.nxpt文件哈希表结构体 / Loaded .nxpt file hash table structure / Geladene .nxpt-Datei-Hash-Tabelle-Struktur
+ */
+typedef struct {
+    nxpt_hash_node_t** buckets;   /**< 桶数组 / Bucket array / Bucket-Array */
+    size_t bucket_count;           /**< 桶数量 / Bucket count / Bucket-Anzahl */
+    size_t entry_count;            /**< 条目数量 / Entry count / Eintragsanzahl */
+} nxpt_hash_table_t;
+
+/**
+ * @brief 指针传递上下文结构体 / Pointer transfer context structure / Zeigerübertragungskontext-Struktur
  */
 typedef struct {
     void* stored_ptr;             /**< 存储的指针 / Stored pointer / Gespeicherter Zeiger */
@@ -150,10 +169,16 @@ typedef struct {
     loaded_nxpt_info_t* loaded_nxpt_files; /**< 已加载的.nxpt文件数组 / Loaded .nxpt files array / Geladene .nxpt-Dateien-Array */
     size_t loaded_nxpt_count;     /**< 已加载.nxpt文件数量 / Loaded .nxpt files count / Anzahl geladener .nxpt-Dateien */
     size_t loaded_nxpt_capacity;  /**< 已加载.nxpt文件数组容量 / Loaded .nxpt files array capacity / Geladene .nxpt-Dateien-Array-Kapazität */
+    nxpt_hash_table_t nxpt_hash_table; /**< 已加载.nxpt文件哈希表（用于高效查找） / Loaded .nxpt files hash table (for efficient lookup) / Geladene .nxpt-Dateien-Hash-Tabelle (für effiziente Suche) */
     char* entry_plugin_name;      /**< 入口插件名称 / Entry plugin name / Einstiegs-Plugin-Name */
     char* entry_plugin_path;      /**< 入口插件路径 / Entry plugin path / Einstiegs-Plugin-Pfad */
     char* entry_nxpt_path;        /**< 入口插件.nxpt路径 / Entry plugin .nxpt path / Einstiegs-Plugin-.nxpt-Pfad */
     char* entry_auto_run_interface; /**< 入口插件自动运行接口名称 / Entry plugin auto-run interface name / Einstiegs-Plugin-Autostart-Schnittstellenname */
+    int disable_info_log;          /**< 禁用INFO级别日志标志（1=禁用，0=启用）/ Disable INFO level log flag (1=disable, 0=enable) / INFO-Ebene-Protokoll-Deaktivierungsflag (1=deaktivieren, 0=aktivieren) */
+    int enable_validation;         /**< 启用插件函数验证标志（1=启用，0=禁用）/ Enable plugin function validation flag (1=enable, 0=disable) / Plugin-Funktionsvalidierungsflag aktivieren (1=aktivieren, 0=deaktivieren) */
+    char** ignore_plugins;         /**< 忽略的插件路径列表（相对路径） / Ignored plugin paths list (relative paths) / Liste der ignorierten Plugin-Pfade (relative Pfade) */
+    size_t ignore_plugin_count;    /**< 忽略插件数量 / Ignored plugin count / Anzahl ignorierter Plugins */
+    size_t ignore_plugin_capacity; /**< 忽略插件数组容量 / Ignored plugin array capacity / Kapazität des Arrays ignorierter Plugins */
 } pointer_transfer_context_t;
 
 #ifdef __cplusplus

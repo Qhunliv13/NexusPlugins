@@ -15,6 +15,9 @@
 
 /**
  * @brief 加载目标插件 / Load target plugin / Ziel-Plugin laden
+ * @param plugin_name 插件名称 / Plugin name / Plugin-Name
+ * @param plugin_path 插件路径 / Plugin path / Plugin-Pfad
+ * @return 成功返回插件句柄，失败返回NULL / Returns plugin handle on success, NULL on failure / Gibt Plugin-Handle bei Erfolg zurück, NULL bei Fehler
  */
 void* load_target_plugin(const char* plugin_name, const char* plugin_path) {
     if (plugin_name == NULL || plugin_path == NULL) {
@@ -67,6 +70,11 @@ void* load_target_plugin(const char* plugin_name, const char* plugin_path) {
 
 /**
  * @brief 链式加载插件.nxpt文件（内部函数） / Chain load plugin .nxpt file (internal function) / Plugin-.nxpt-Datei kettenweise laden (interne Funktion)
+ * @param plugin_name 插件名称 / Plugin name / Plugin-Name
+ * @param plugin_path 插件路径 / Plugin path / Plugin-Pfad
+ * @param loading_stack 加载栈数组 / Loading stack array / Ladestapel-Array
+ * @param stack_size 加载栈大小 / Loading stack size / Ladestapel-Größe
+ * @return 成功返回0，失败返回非0 / Returns 0 on success, non-zero on failure / Gibt 0 bei Erfolg zurück, ungleich 0 bei Fehler
  */
 static int chain_load_plugin_nxpt_internal(const char* plugin_name, const char* plugin_path, const char* loading_stack[], size_t stack_size) {
     if (plugin_name == NULL || plugin_path == NULL) {
@@ -109,7 +117,7 @@ static int chain_load_plugin_nxpt_internal(const char* plugin_name, const char* 
             }
             new_stack_size = stack_size;
         } else {
-            /* 加载栈容量超限 / Loading stack capacity exceeded / Ladestapel-Kapazität überschritten */
+            /* 加载栈容量超出限制 / Loading stack capacity exceeded / Ladestapel-Kapazität überschritten */
             size_t start_idx = stack_size - (sizeof(new_loading_stack) / sizeof(new_loading_stack[0]) - 1);
             for (size_t i = start_idx; i < stack_size; i++) {
                 new_loading_stack[i - start_idx] = loading_stack[i];
@@ -145,6 +153,9 @@ static int chain_load_plugin_nxpt_internal(const char* plugin_name, const char* 
 
 /**
  * @brief 链式加载插件的.nxpt文件 / Chain load plugin .nxpt file / Plugin-.nxpt-Datei kettenweise laden
+ * @param plugin_name 插件名称 / Plugin name / Plugin-Name
+ * @param plugin_path 插件路径 / Plugin path / Plugin-Pfad
+ * @return 成功返回0，失败返回非0 / Returns 0 on success, non-zero on failure / Gibt 0 bei Erfolg zurück, ungleich 0 bei Fehler
  */
 int chain_load_plugin_nxpt(const char* plugin_name, const char* plugin_path) {
     const char* initial_stack[1] = {NULL};
@@ -162,6 +173,10 @@ int chain_load_plugin_nxpt(const char* plugin_name, const char* plugin_path) {
 
 /**
  * @brief 获取插件路径（缓存） / Get plugin path (cached) / Plugin-Pfad abrufen (gecacht)
+ * @param plugin_name 插件名称 / Plugin name / Plugin-Name
+ * @param plugin_path 输出路径缓冲区 / Output path buffer / Ausgabe-Pfad-Puffer
+ * @param path_size 路径缓冲区大小 / Path buffer size / Pfad-Puffergröße
+ * @return 成功返回0，失败返回非0 / Returns 0 on success, non-zero on failure / Gibt 0 bei Erfolg zurück, ungleich 0 bei Fehler
  */
 int get_plugin_path_cached(const char* plugin_name, char* plugin_path, size_t path_size) {
     if (plugin_name == NULL || plugin_path == NULL || path_size == 0) {
@@ -192,7 +207,7 @@ int get_plugin_path_cached(const char* plugin_name, char* plugin_path, size_t pa
                     
                     plugin_path_cache_entry_t* cache_entry = NULL;
                     if (ctx->path_cache == NULL || ctx->path_cache_count >= ctx->path_cache_capacity) {
-                        /* 初始容量：8，扩展因子：2 / Initial capacity: 8, growth factor: 2 / Anfangskapazität: 8, Wachstumsfaktor: 2 */
+                        /* 初始容量：8，增长因子：2 / Initial capacity: 8, growth factor: 2 / Anfangskapazität: 8, Wachstumsfaktor: 2 */
                         size_t new_capacity = ctx->path_cache_capacity == 0 ? 8 : ctx->path_cache_capacity * 2;
                         plugin_path_cache_entry_t* new_cache = (plugin_path_cache_entry_t*)realloc(ctx->path_cache, new_capacity * sizeof(plugin_path_cache_entry_t));
                         if (new_cache == NULL) {

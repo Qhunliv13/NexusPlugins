@@ -38,7 +38,7 @@ void* pt_platform_get_symbol(void* handle, const char* symbol_name);
 int32_t pt_platform_close_library(void* handle);
 
 /**
- * @brief 平台函数调用（通过静态验证预防错误）/ Platform function call (prevent errors through static validation) / Plattform-Funktionsaufruf (Fehler durch statische Validierung verhindern)
+ * @brief 平台函数调用 / Platform function call / Plattform-Funktionsaufruf
  * @param func_ptr 函数指针 / Function pointer / Funktionszeiger
  * @param param_count 参数数量 / Parameter count / Parameteranzahl
  * @param param_types 参数类型数组 / Parameter types array / Parametertyp-Array
@@ -50,10 +50,27 @@ int32_t pt_platform_close_library(void* handle);
  * @param result_float 输出浮点返回值指针 / Output floating-point return value pointer / Ausgabe-Gleitkomma-Rückgabewert-Zeiger
  * @param result_struct 输出结构体返回值缓冲区，可为NULL / Output struct return value buffer, can be NULL / Ausgabe-Struktur-Rückgabewert-Puffer, kann NULL sein
  * @return 成功返回0，错误返回非0 / Returns 0 on success, non-zero on error / Gibt 0 bei Erfolg zurück, ungleich 0 bei Fehler
- * @details 通过严格的参数验证和静态检查预防错误，不使用异常处理机制 / Prevents errors through strict parameter validation and static checks, no exception handling mechanism / Verhindert Fehler durch strenge Parametervalidierung und statische Prüfungen, kein Ausnahmebehandlungsmechanismus
  */
 int32_t pt_platform_safe_call(void* func_ptr, int param_count, void* param_types, void** param_values, void* param_sizes,
                                pt_return_type_t return_type, size_t return_size, int64_t* result_int, double* result_float, void* result_struct);
+
+/**
+ * @brief 获取文件修改时间戳 / Get file modification timestamp / Dateiänderungszeitstempel abrufen
+ * @param file_path 文件路径 / File path / Dateipfad
+ * @param timestamp 输出时间戳指针 / Output timestamp pointer / Ausgabe-Zeitstempel-Zeiger
+ * @return 成功返回0，失败返回-1 / Returns 0 on success, -1 on failure / Gibt 0 bei Erfolg zurück, -1 bei Fehler
+ */
+int32_t pt_platform_get_file_timestamp(const char* file_path, int64_t* timestamp);
+
+/**
+ * @brief 从插件路径获取目录并递归查找所有DLL文件 / Get directory from plugin path and recursively find all DLL files / Verzeichnis aus Plugin-Pfad abrufen und alle DLL-Dateien rekursiv finden
+ * @param plugin_path 插件文件路径 / Plugin file path / Plugin-Dateipfad
+ * @param dll_files 输出DLL文件路径数组 / Output DLL file paths array / Ausgabe-DLL-Dateipfad-Array
+ * @param max_files 最大文件数量 / Maximum file count / Maximale Dateianzahl
+ * @param file_count 输出找到的文件数量 / Output found file count / Ausgabe gefundene Dateianzahl
+ * @return 成功返回0，失败返回-1 / Returns 0 on success, -1 on failure / Gibt 0 bei Erfolg zurück, -1 bei Fehler
+ */
+int32_t pt_platform_find_all_dll_files(const char* plugin_path, char dll_files[][1024], int max_files, int* file_count);
 
 #ifdef __cplusplus
 }

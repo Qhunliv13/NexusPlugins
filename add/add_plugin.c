@@ -200,13 +200,15 @@ NXLD_PLUGIN_EXPORT int32_t NXLD_PLUGIN_CALL nxld_plugin_get_interface_param_info
 /**
  * @brief 将参数值转换为 double / Convert parameter value to double / Parameterwert in double umwandeln
  * @param param 参数指针 / Parameter pointer / Parameterzeiger
- * @return double 值 / double value / double-Wert
+ * @return double 值，失败返回 0.0 / double value, returns 0.0 on failure / double-Wert, gibt 0.0 bei Fehler zurück
+ * @note 由于参数包已序列化，基本类型的值已存储在 union 中，优先使用 union 中的值。对于 ANY/POINTER 类型，尝试从指针读取 / Since parameter pack is serialized, basic type values are already stored in union, prefer using union values. For ANY/POINTER types, try to read from pointer / Da Parameterpaket serialisiert ist, sind Basistypwerte bereits in Union gespeichert, bevorzuge Union-Werte. Für ANY/POINTER-Typen, versuche von Zeiger zu lesen
  */
 static double convert_to_double(const pt_curried_param_t* param) {
     if (param == NULL) {
         return 0.0;
     }
     
+    /* 优先处理基本类型，这些类型的值已存储在 union 中（序列化机制保证） / Prefer basic types, values are stored in union (guaranteed by serialization mechanism) / Bevorzuge Basistypen, Werte sind in Union gespeichert (durch Serialisierungsmechanismus garantiert) */
     switch (param->type) {
         case NXLD_PARAM_TYPE_INT32:
             return (double)param->value.int32_val;
@@ -222,27 +224,30 @@ static double convert_to_double(const pt_curried_param_t* param) {
         case NXLD_PARAM_TYPE_POINTER:
         case NXLD_PARAM_TYPE_VARIADIC:
         case NXLD_PARAM_TYPE_UNKNOWN: {
-            // 对于ANY/POINTER类型，尝试从ptr_val中读取值 / For ANY/POINTER types, try to read value from ptr_val / Für ANY/POINTER-Typen, versuchen, Wert aus ptr_val zu lesen
-            if (param->value.ptr_val != NULL) {
-                // 根据size判断类型 / Determine type by size / Typ nach Größe bestimmen
-                if (param->size == sizeof(int32_t) || (param->size == 0 && sizeof(void*) == sizeof(int32_t))) {
-                    int32_t* int32_ptr = (int32_t*)param->value.ptr_val;
-                    return (double)*int32_ptr;
-                } else if (param->size == sizeof(int64_t) || (param->size == sizeof(void*) && sizeof(void*) == sizeof(int64_t))) {
-                    int64_t* int64_ptr = (int64_t*)param->value.ptr_val;
-                    return (double)*int64_ptr;
-                } else if (param->size == sizeof(double)) {
-                    double* double_ptr = (double*)param->value.ptr_val;
-                    return *double_ptr;
-                } else if (param->size == sizeof(float)) {
-                    float* float_ptr = (float*)param->value.ptr_val;
-                    return (double)*float_ptr;
-                } else {
-                    // 默认尝试读取int64_t（因为result_int是int64_t类型）/ Default try to read int64_t (because result_int is int64_t) / Standardmäßig versuchen, int64_t zu lesen (weil result_int int64_t ist)
-                    int64_t* int64_ptr = (int64_t*)param->value.ptr_val;
-                    return (double)*int64_ptr;
+            /* 对于 ANY/POINTER 类型，尝试从指针读取数值 / For ANY/POINTER types, try to read numeric value from pointer / Für ANY/POINTER-Typen, versuche numerischen Wert vom Zeiger zu lesen */
+            if (param->value.ptr_val == NULL) {
+                return 0.0;
+            }
+            
+            /* 根据 size 判断数值类型并读取 / Determine numeric type by size and read / Numerischen Typ nach Größe bestimmen und lesen */
+            if (param->size == sizeof(int32_t)) {
+                return (double)*(int32_t*)param->value.ptr_val;
+            } else if (param->size == sizeof(int64_t)) {
+                return (double)*(int64_t*)param->value.ptr_val;
+            } else if (param->size == sizeof(float)) {
+                return (double)*(float*)param->value.ptr_val;
+            } else if (param->size == sizeof(double)) {
+                return *(double*)param->value.ptr_val;
+            } else if (param->size == 0 || param->size == sizeof(void*)) {
+                /* size 为 0 或指针大小，尝试按指针大小读取 / size is 0 or pointer size, try to read by pointer size / size ist 0 oder Zeigergröße, versuche nach Zeigergröße zu lesen */
+                if (sizeof(void*) == sizeof(int64_t)) {
+                    return (double)*(int64_t*)param->value.ptr_val;
+                } else if (sizeof(void*) == sizeof(int32_t)) {
+                    return (double)*(int32_t*)param->value.ptr_val;
                 }
             }
+            
+            /* 无法确定类型，返回 0.0 / Cannot determine type, return 0.0 / Kann Typ nicht bestimmen, gebe 0.0 zurück */
             return 0.0;
         }
         default:
@@ -252,16 +257,24 @@ static double convert_to_double(const pt_curried_param_t* param) {
 
 /**
  * @brief 加法函数 / Addition function / Additionsfunktion
- * @param pack_ptr 参数包指针 / Parameter pack pointer / Parameterpaket-Zeiger
- * @return 两个参数的和 / Sum of two parameters / Summe zweier Parameter
+ * @param pack_ptr 参数包指针（序列化后的连续内存块）/ Parameter pack pointer (serialized contiguous memory block) / Parameterpaket-Zeiger (serialisierter zusammenhängender Speicherblock)
+ * @return 两个参数的和，参数无效时返回 0.0 / Sum of two parameters, returns 0.0 if parameters are invalid / Summe zweier Parameter, gibt 0.0 zurück wenn Parameter ungültig sind
+ * @note 参数包已通过序列化机制传递，数据格式与 pt_param_pack_t 兼容，可直接转换使用 / Parameter pack is passed via serialization mechanism, data format is compatible with pt_param_pack_t and can be directly cast / Parameterpaket wird über Serialisierungsmechanismus übergeben, Datenformat ist mit pt_param_pack_t kompatibel und kann direkt umgewandelt werden
  */
 NXLD_PLUGIN_EXPORT double NXLD_PLUGIN_CALL Add(void* pack_ptr) {
-    pt_param_pack_t* pack = (pt_param_pack_t*)pack_ptr;
-    
-    if (pack == NULL || pack->param_count < 2 || pack->params == NULL) {
+    /* 参数验证 / Parameter validation / Parametervalidierung */
+    if (pack_ptr == NULL) {
         return 0.0;
     }
     
+    pt_param_pack_t* pack = (pt_param_pack_t*)pack_ptr;
+    
+    /* 验证参数包结构 / Validate parameter pack structure / Parameterpaket-Struktur validieren */
+    if (pack->param_count < 2 || pack->params == NULL) {
+        return 0.0;
+    }
+    
+    /* 转换参数并执行加法 / Convert parameters and perform addition / Parameter konvertieren und Addition durchführen */
     double a = convert_to_double(&pack->params[0]);
     double b = convert_to_double(&pack->params[1]);
     

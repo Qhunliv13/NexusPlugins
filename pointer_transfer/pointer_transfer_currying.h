@@ -64,8 +64,9 @@ void* pt_serialize_param_pack(pt_param_pack_t* pack);
 
 /**
  * @brief 反序列化指针为参数包 / Deserialize pointer to parameter pack / Zeiger in Parameterpaket deserialisieren
- * @param data 序列化数据指针 / Serialized data pointer / Serialisierter Datenzeiger
+ * @param data 序列化数据指针（由pt_serialize_param_pack返回的连续内存块）/ Serialized data pointer (contiguous memory block returned by pt_serialize_param_pack) / Serialisierter Datenzeiger (zusammenhängender Speicherblock, zurückgegeben von pt_serialize_param_pack)
  * @return 成功返回参数包指针，失败返回NULL / Returns parameter pack pointer on success, NULL on failure / Gibt Parameterpaket-Zeiger bei Erfolg zurück, NULL bei Fehler
+ * @note 序列化后的数据格式与pt_param_pack_t完全兼容，支持直接类型转换。此函数主要用于设置params指针（当其为NULL时）并验证数据有效性。插件可将void*直接转换为pt_param_pack_t*使用 / Serialized data format is fully compatible with pt_param_pack_t and supports direct type casting. This function is primarily used to set params pointer (when NULL) and validate data validity. Plugins may directly cast void* to pt_param_pack_t* / Serialisiertes Datenformat ist vollständig mit pt_param_pack_t kompatibel und unterstützt direkte Typumwandlung. Diese Funktion wird hauptsächlich verwendet, um params-Zeiger zu setzen (wenn NULL) und Datenvalidität zu überprüfen. Plugins können void* direkt in pt_param_pack_t* umwandeln
  */
 pt_param_pack_t* pt_deserialize_param_pack(void* data);
 
@@ -85,11 +86,14 @@ int32_t pt_validate_param_pack(pt_param_pack_t* pack);
 /**
  * @brief 验证插件函数兼容性 / Validate plugin function compatibility / Plugin-Funktionskompatibilität validieren
  * @param func_ptr 插件函数指针 / Plugin function pointer / Plugin-Funktionszeiger
+ * @param plugin_path 插件文件路径 / Plugin file path / Plugin-Dateipfad
+ * @param interface_name 接口名称 / Interface name / Schnittstellenname
  * @param expected_param_count 期望的参数数量 / Expected parameter count / Erwartete Parameteranzahl
  * @param return_type 返回值类型 / Return type / Rückgabetyp
  * @return 验证通过返回0，失败返回-1 / Returns 0 if validation passes, -1 on failure / Gibt 0 zurück wenn Validierung erfolgreich, -1 bei Fehler
+ * @note 当验证已通过且插件文件时间戳未变更时，跳过重复验证 / When validation has passed and plugin file timestamp is unchanged, skip repeated validation / Wenn Validierung erfolgreich war und Plugin-Datei-Zeitstempel unverändert ist, wiederholte Validierung überspringen
  */
-int32_t pt_validate_plugin_function(void* func_ptr, int expected_param_count, pt_return_type_t return_type);
+int32_t pt_validate_plugin_function(void* func_ptr, const char* plugin_path, const char* interface_name, int expected_param_count, pt_return_type_t return_type);
 
 /**
  * @brief 柯里化调用函数 / Call function using currying / Funktion mit Currying aufrufen
