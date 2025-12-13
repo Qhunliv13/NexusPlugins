@@ -8,7 +8,7 @@ env = Environment()
 if os.name == 'nt':
     env['CC'] = 'cl'
     env['CXX'] = 'cl'
-    env['CCFLAGS'] = ['/W4', '/O2', '/utf-8', '/LD', '/I.', '/Icore', '/Icontext', '/Iconfig', '/Icurrying', '/Iutils', '/Iplatform', '/Irules']
+    env['CCFLAGS'] = ['/W4', '/O2', '/utf-8', '/LD', '/I.', '/Icore', '/Icontext', '/Iconfig', '/Iconfig/common', '/Iconfig/entry', '/Iconfig/rules', '/Iconfig/hash', '/Icurrying', '/Iutils', '/Iplatform', '/Irules', '/Irules/core', '/Irules/broadcast_multicast', '/Irules/unicast', '/Iinterface', '/Iloader']
     # /OPT:REF: 移除未引用的函数和数据 / Remove unreferenced functions and data / Nicht referenzierte Funktionen und Daten entfernen
     # /OPT:ICF: 合并相同的函数 / Merge identical functions / Identische Funktionen zusammenführen
     env['LINKFLAGS'] = ['/NOEXP', '/OPT:REF', '/OPT:ICF']
@@ -36,54 +36,163 @@ else:
     env['CXX'] = 'g++'
     # -ffunction-sections: 每个函数放在独立段 / Place each function in separate section / Jede Funktion in separaten Abschnitt platzieren
     # -fdata-sections: 每个数据放在独立段 / Place each data in separate section / Jede Daten in separaten Abschnitt platzieren
-    env['CCFLAGS'] = ['-Wall', '-Wextra', '-O2', '-std=c99', '-fPIC', '-shared', '-ffunction-sections', '-fdata-sections', '-I.', '-Icore', '-Icontext', '-Iconfig', '-Icurrying', '-Iutils', '-Iplatform', '-Irules']
+    env['CCFLAGS'] = ['-Wall', '-Wextra', '-O2', '-std=c99', '-fPIC', '-shared', '-ffunction-sections', '-fdata-sections', '-I.', '-Icore', '-Icontext', '-Iconfig', '-Iconfig/common', '-Iconfig/entry', '-Iconfig/rules', '-Iconfig/hash', '-Icurrying', '-Iutils', '-Iplatform', '-Irules', '-Irules/core', '-Irules/broadcast_multicast', '-Irules/unicast', '-Iinterface', '-Iloader']
     # -Wl,--gc-sections: 链接时移除未使用的段 / Remove unused sections during linking / Nicht verwendete Abschnitte beim Verlinken entfernen
     env['LINKFLAGS'] = ['-shared', '-Wl,--gc-sections']
 
 # 源文件 / Source files / Quelldateien
 source = [
     # 核心文件 / Core files / Kerndateien
-    'core/pointer_transfer_plugin_metadata.c',
-    'core/pointer_transfer_plugin_interfaces.c',
-    'core/pointer_transfer_plugin_init.c',
+    # 初始化 / Initialization / Initialisierung
+    'core/init/pointer_transfer_plugin_init_core.c',
+    'core/init/pointer_transfer_plugin_entry.c',
+    # 接口 / Interfaces / Schnittstellen
+    'core/interfaces/pointer_transfer_plugin_transfer.c',
+    'core/interfaces/pointer_transfer_plugin_call.c',
+    # 元数据 / Metadata / Metadaten
+    'core/metadata/pointer_transfer_plugin_metadata_constants.c',
+    'core/metadata/pointer_transfer_plugin_metadata_name.c',
+    'core/metadata/pointer_transfer_plugin_metadata_version.c',
+    'core/metadata/pointer_transfer_plugin_metadata_interface_count.c',
+    'core/metadata/pointer_transfer_plugin_metadata_interface_info.c',
+    'core/metadata/pointer_transfer_plugin_metadata_param_count.c',
+    'core/metadata/pointer_transfer_plugin_metadata_param_info.c',
     
     # 规则匹配 / Rule matching / Regelabgleich
-    'rules/pointer_transfer_rule_matcher.c',
+    'rules/core/pointer_transfer_rule_matcher.c',
+    'rules/broadcast_multicast/broadcast_multicast_matcher.c',
+    'rules/unicast/unicast_matcher.c',
     
     # 工具函数 / Utility functions / Hilfsfunktionen
     'utils/log.c',
-    'utils/string.c',
-    'utils/type.c',
-    'utils/path.c',
-    'utils/parameter.c',
+    'utils/string/string_allocate.c',
+    'utils/string/string_trim.c',
+    'utils/string/string_parse.c',
+    'utils/type/type_name.c',
+    'utils/type/type_compatibility.c',
+    'utils/type/type_condition.c',
+    'utils/path/path_dll.c',
+    'utils/path/path_nxpt.c',
+    'utils/parameter/parameter_const.c',
+    'utils/parameter/parameter_pointer.c',
+    'utils/parameter/parameter_return.c',
     'utils/rule.c',
     
     # 上下文管理 / Context management / Kontextverwaltung
-    'context/pointer_transfer_context_core.c',
-    'context/pointer_transfer_context_capacity.c',
-    'context/pointer_transfer_context_index.c',
-    'context/pointer_transfer_context_cache.c',
-    'context/pointer_transfer_context_ignore.c',
+    # 核心功能 / Core functions / Kernfunktionen
+    'context/core/pointer_transfer_context_global.c',
+    'context/core/pointer_transfer_context_init.c',
+    'context/core/pointer_transfer_context_cleanup.c',
+    'context/core/pointer_transfer_context_rules.c',
+    # 容量管理 / Capacity management / Kapazitätsverwaltung
+    'context/capacity/pointer_transfer_context_capacity_rules.c',
+    'context/capacity/pointer_transfer_context_capacity_plugins.c',
+    'context/capacity/pointer_transfer_context_capacity_states.c',
+    # 索引和哈希表 / Index and hash table / Index und Hash-Tabelle
+    'context/index/pointer_transfer_context_hash.c',
+    'context/index/pointer_transfer_context_index.c',
+    # 缓存管理 / Cache management / Cache-Verwaltung
+    'context/cache/pointer_transfer_context_cache_build.c',
+    'context/cache/pointer_transfer_context_cache_get.c',
+    # 忽略列表管理 / Ignore list management / Ignorierliste-Verwaltung
+    'context/ignore/pointer_transfer_context_ignore_add.c',
+    'context/ignore/pointer_transfer_context_ignore_check.c',
     
     # 配置管理 / Configuration management / Konfigurationsverwaltung
-    'config/pointer_transfer_config_hash.c',
-    'config/pointer_transfer_config_entry.c',
-    'config/pointer_transfer_config_rules.c',
+    # 公共模块 / Common modules / Gemeinsame Module
+    'config/common/config_parser_common.c',
+    # 入口配置 / Entry configuration / Einstiegs-Konfiguration
+    'config/entry/config_entry_parser.c',
+    'config/entry/pointer_transfer_config_entry.c',
+    # 规则配置 / Rules configuration / Regeln-Konfiguration
+    'config/rules/config_rules_scanner.c',
+    'config/rules/config_rules_parser.c',
+    'config/rules/config_rules_merger.c',
+    'config/rules/config_rules_loader.c',
+    'config/rules/pointer_transfer_config_rules.c',
+    # 哈希表 / Hash table / Hash-Tabelle
+    'config/hash/config_hash_calc.c',
+    'config/hash/config_hash_table.c',
+    'config/hash/config_hash_ops.c',
+    'config/hash/pointer_transfer_config_hash.c',
     
     # 插件加载和接口 / Plugin loading and interface / Plugin-Laden und -Schnittstelle
-    'pointer_transfer_plugin_loader.c',
+    # 加载模块 / Loading modules / Lade-Module
+    'loader/load/pointer_transfer_plugin_loader_load_find.c',
+    'loader/load/pointer_transfer_plugin_loader_load_register.c',
+    'loader/load/pointer_transfer_plugin_loader_load_target.c',
+    # 链式加载模块 / Chain loading modules / Kettenlade-Module
+    'loader/chain/pointer_transfer_plugin_loader_chain_cycle.c',
+    'loader/chain/pointer_transfer_plugin_loader_chain_stack.c',
+    'loader/chain/pointer_transfer_plugin_loader_chain_load.c',
+    # 缓存模块 / Cache modules / Cache-Module
+    'loader/cache/pointer_transfer_plugin_loader_cache_get.c',
+    'loader/cache/pointer_transfer_plugin_loader_cache_add.c',
     'pointer_transfer_interface.c',
+    # 接口模块 / Interface modules / Schnittstellenmodule
+    # 参数处理 / Parameter processing / Parameterverarbeitung
+    'interface/param/pointer_transfer_interface_param.c',
+    'interface/param/pointer_transfer_interface_param_validate.c',
+    'interface/param/pointer_transfer_interface_param_set.c',
+    'interface/param/pointer_transfer_interface_param_readiness.c',
+    'interface/param/pointer_transfer_interface_param_count.c',
+    # 状态管理 / State management / Statusverwaltung
+    'interface/state/pointer_transfer_interface_state.c',
+    'interface/state/pointer_transfer_interface_state_find.c',
+    'interface/state/pointer_transfer_interface_state_info.c',
+    'interface/state/pointer_transfer_interface_state_create.c',
+    # SetGroup处理 / SetGroup processing / SetGroup-Verarbeitung
+    'interface/setgroup/pointer_transfer_interface_setgroup.c',
+    'interface/setgroup/pointer_transfer_interface_setgroup_exec.c',
+    # 规则处理 / Rule processing / Regel-Verarbeitung
+    'interface/rule/pointer_transfer_interface_rule.c',
+    'interface/rule/pointer_transfer_interface_rule_process.c',
+    # 返回值处理 / Return value processing / Rückgabewert-Verarbeitung
+    'interface/return/pointer_transfer_interface_return.c',
+    # 调用准备 / Call preparation / Aufruf-Vorbereitung
+    'interface/prepare/pointer_transfer_interface_prepare.c',
+    # 结果处理 / Result processing / Ergebnis-Verarbeitung
+    'interface/result/pointer_transfer_interface_result.c',
+    # 验证 / Validation / Validierung
+    'interface/validate/pointer_transfer_interface_validate.c',
+    # 清理 / Cleanup / Bereinigung
+    'interface/cleanup/pointer_transfer_interface_cleanup.c',
+    # 调用链 / Call chain / Aufrufkette
+    'interface/chain/pointer_transfer_interface_chain.c',
+    # 循环检测 / Cycle detection / Zykluserkennung
+    'interface/cycle/pointer_transfer_interface_cycle.c',
+    # 加载 / Loading / Laden
+    'interface/load/pointer_transfer_interface_load.c',
     
     # 平台抽象 / Platform abstraction / Plattform-Abstraktion
-    'platform/library.c',
-    'platform/file.c',
-    'platform/call.c',
+    # 动态库操作 / Dynamic library operations / Dynamische Bibliotheksoperationen
+    'platform/library/library_load.c',
+    'platform/library/library_symbol.c',
+    'platform/library/library_close.c',
+    # 文件操作 / File operations / Datei-Operationen
+    'platform/file/file_timestamp.c',
+    'platform/file/file_search.c',
+    # 函数调用 / Function calls / Funktionsaufrufe
+    'platform/call/call_validation.c',
+    'platform/call/call_execution.c',
+    'platform/call/call.c',
     
     # 柯里化 / Currying / Currying
-    'currying/pointer_transfer_currying_pack.c',
-    'currying/pointer_transfer_currying_serialize.c',
-    'currying/pointer_transfer_currying_validate.c',
-    'currying/pointer_transfer_currying_call.c'
+    # 调用相关 / Call related / Aufruf-bezogen
+    'currying/call/pointer_transfer_currying_call.c',
+    'currying/call/pointer_transfer_currying_call_return.c',
+    # 参数包相关 / Parameter pack related / Parameterpaket-bezogen
+    'currying/pack/pointer_transfer_currying_pack_create.c',
+    'currying/pack/pointer_transfer_currying_pack_free.c',
+    'currying/pack/pointer_transfer_currying_pack_validate.c',
+    # 序列化相关 / Serialization related / Serialisierung-bezogen
+    'currying/serialize/pointer_transfer_currying_serialize.c',
+    'currying/serialize/pointer_transfer_currying_deserialize.c',
+    # 验证相关 / Validation related / Validierung-bezogen
+    'currying/validate/pointer_transfer_currying_validate.c',
+    'currying/validate/pointer_transfer_currying_validate_cache.c',
+    'currying/validate/pointer_transfer_currying_validate_test.c',
+    'currying/validate/pointer_transfer_currying_nxpv.c'
 ]
 
 # 输出路径 / Output path / Ausgabepfad

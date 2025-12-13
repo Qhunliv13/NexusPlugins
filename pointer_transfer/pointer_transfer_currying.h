@@ -110,6 +110,63 @@ int32_t pt_call_with_currying(void* func_ptr, pt_param_pack_t* pack,
                                pt_return_type_t return_type, size_t return_size,
                                int64_t* result_int, double* result_float, void* result_struct);
 
+/* 内部函数声明 / Internal function declarations / Interne Funktionsdeklarationen */
+
+/**
+ * @brief 构建.nxpv文件路径 / Build .nxpv file path / .nxpv-Dateipfad erstellen
+ */
+int pt_build_nxpv_path(const char* plugin_path, char* nxpv_path, size_t buffer_size);
+
+/**
+ * @brief 从.nxpv文件读取验证信息 / Read validation info from .nxpv file / Validierungsinformationen aus .nxpv-Datei lesen
+ */
+int32_t pt_read_validation_from_nxpv(const char* nxpv_path, int64_t* timestamp, int* is_valid);
+
+/**
+ * @brief 生成.nxpv验证文件 / Generate .nxpv validation file / .nxpv-Validierungsdatei generieren
+ */
+int32_t pt_generate_nxpv_file(const char* plugin_path, int64_t timestamp, int is_valid);
+
+/**
+ * @brief 检查验证缓存是否有效 / Check if validation cache is valid / Prüfen, ob Validierungs-Cache gültig ist
+ */
+int32_t pt_check_validation_cache(const char* plugin_path, int* cache_valid);
+
+/**
+ * @brief 处理目录中其他DLL文件的验证文件生成 / Handle validation file generation for other DLL files in directory / Validierungsdatei-Generierung für andere DLL-Dateien im Verzeichnis behandeln
+ */
+int32_t pt_process_directory_dll_validation(const char* plugin_path);
+
+/**
+ * @brief 创建测试参数包 / Create test parameter pack / Testparameterpaket erstellen
+ */
+pt_param_pack_t* pt_create_test_param_pack(int expected_param_count);
+
+/**
+ * @brief 调用返回FLOAT类型的函数 / Call function returning FLOAT type / Funktion aufrufen, die FLOAT-Typ zurückgibt
+ */
+int32_t pt_call_curried_func_float(void* func_ptr, void* serialized_pack, double* result_float, int64_t* result_int);
+
+/**
+ * @brief 调用返回DOUBLE类型的函数 / Call function returning DOUBLE type / Funktion aufrufen, die DOUBLE-Typ zurückgibt
+ */
+int32_t pt_call_curried_func_double(void* func_ptr, void* serialized_pack, double* result_float, int64_t* result_int);
+
+/**
+ * @brief 调用返回STRUCT_PTR类型的函数 / Call function returning STRUCT_PTR type / Funktion aufrufen, die STRUCT_PTR-Typ zurückgibt
+ */
+int32_t pt_call_curried_func_struct_ptr(void* func_ptr, void* serialized_pack, void* result_struct, size_t return_size, int64_t* result_int, double* result_float);
+
+/**
+ * @brief 调用返回STRUCT_VAL类型的函数 / Call function returning STRUCT_VAL type / Funktion aufrufen, die STRUCT_VAL-Typ zurückgibt
+ */
+int32_t pt_call_curried_func_struct_val(void* func_ptr, void* serialized_pack, void* result_struct, int64_t* result_int, double* result_float);
+
+/**
+ * @brief 调用返回整数类型的函数 / Call function returning integer type / Funktion aufrufen, die Integer-Typ zurückgibt
+ */
+int32_t pt_call_curried_func_int(void* func_ptr, void* serialized_pack, int64_t* result_int, double* result_float);
+
 #ifdef __cplusplus
 }
 #endif

@@ -101,6 +101,13 @@ const size_t* get_cached_rule_indices(void);
 int is_plugin_ignored(const char* plugin_path);
 
 /**
+ * @brief 添加忽略插件路径 / Add ignored plugin path / Ignorierten Plugin-Pfad hinzufügen
+ * @param plugin_path 插件路径（相对路径） / Plugin path (relative path) / Plugin-Pfad (relativer Pfad)
+ * @return 成功返回0，失败返回-1 / Returns 0 on success, -1 on failure / Gibt 0 bei Erfolg zurück, -1 bei Fehler
+ */
+int add_ignore_plugin_path(const char* plugin_path);
+
+/**
  * @brief 初始化默认忽略插件列表 / Initialize default ignored plugins list / Standard-Ignorierliste für Plugins initialisieren
  */
 void initialize_default_ignore_plugins(void);
