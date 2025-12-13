@@ -8,7 +8,7 @@ env = Environment()
 if os.name == 'nt':
     env['CC'] = 'cl'
     env['CXX'] = 'cl'
-    env['CCFLAGS'] = ['/W4', '/O2', '/utf-8', '/LD']
+    env['CCFLAGS'] = ['/W4', '/O2', '/utf-8', '/LD', '/I.', '/Icore', '/Icontext', '/Iconfig', '/Icurrying', '/Iutils', '/Iplatform', '/Irules']
     # /OPT:REF: 移除未引用的函数和数据 / Remove unreferenced functions and data / Nicht referenzierte Funktionen und Daten entfernen
     # /OPT:ICF: 合并相同的函数 / Merge identical functions / Identische Funktionen zusammenführen
     env['LINKFLAGS'] = ['/NOEXP', '/OPT:REF', '/OPT:ICF']
@@ -36,20 +36,54 @@ else:
     env['CXX'] = 'g++'
     # -ffunction-sections: 每个函数放在独立段 / Place each function in separate section / Jede Funktion in separaten Abschnitt platzieren
     # -fdata-sections: 每个数据放在独立段 / Place each data in separate section / Jede Daten in separaten Abschnitt platzieren
-    env['CCFLAGS'] = ['-Wall', '-Wextra', '-O2', '-std=c99', '-fPIC', '-shared', '-ffunction-sections', '-fdata-sections']
+    env['CCFLAGS'] = ['-Wall', '-Wextra', '-O2', '-std=c99', '-fPIC', '-shared', '-ffunction-sections', '-fdata-sections', '-I.', '-Icore', '-Icontext', '-Iconfig', '-Icurrying', '-Iutils', '-Iplatform', '-Irules']
     # -Wl,--gc-sections: 链接时移除未使用的段 / Remove unused sections during linking / Nicht verwendete Abschnitte beim Verlinken entfernen
     env['LINKFLAGS'] = ['-shared', '-Wl,--gc-sections']
 
 # 源文件 / Source files / Quelldateien
 source = [
-    'pointer_transfer_plugin.c',
-    'pointer_transfer_utils.c',
-    'pointer_transfer_context.c',
-    'pointer_transfer_config.c',
+    # 核心文件 / Core files / Kerndateien
+    'core/pointer_transfer_plugin_metadata.c',
+    'core/pointer_transfer_plugin_interfaces.c',
+    'core/pointer_transfer_plugin_init.c',
+    
+    # 规则匹配 / Rule matching / Regelabgleich
+    'rules/pointer_transfer_rule_matcher.c',
+    
+    # 工具函数 / Utility functions / Hilfsfunktionen
+    'utils/log.c',
+    'utils/string.c',
+    'utils/type.c',
+    'utils/path.c',
+    'utils/parameter.c',
+    'utils/rule.c',
+    
+    # 上下文管理 / Context management / Kontextverwaltung
+    'context/pointer_transfer_context_core.c',
+    'context/pointer_transfer_context_capacity.c',
+    'context/pointer_transfer_context_index.c',
+    'context/pointer_transfer_context_cache.c',
+    'context/pointer_transfer_context_ignore.c',
+    
+    # 配置管理 / Configuration management / Konfigurationsverwaltung
+    'config/pointer_transfer_config_hash.c',
+    'config/pointer_transfer_config_entry.c',
+    'config/pointer_transfer_config_rules.c',
+    
+    # 插件加载和接口 / Plugin loading and interface / Plugin-Laden und -Schnittstelle
     'pointer_transfer_plugin_loader.c',
     'pointer_transfer_interface.c',
-    'pointer_transfer_platform.c',
-    'pointer_transfer_currying.c'  # 柯里化实现替代汇编 / Currying implementation replaces assembly / Currying-Implementierung ersetzt Assembler
+    
+    # 平台抽象 / Platform abstraction / Plattform-Abstraktion
+    'platform/library.c',
+    'platform/file.c',
+    'platform/call.c',
+    
+    # 柯里化 / Currying / Currying
+    'currying/pointer_transfer_currying_pack.c',
+    'currying/pointer_transfer_currying_serialize.c',
+    'currying/pointer_transfer_currying_validate.c',
+    'currying/pointer_transfer_currying_call.c'
 ]
 
 # 输出路径 / Output path / Ausgabepfad
@@ -63,4 +97,3 @@ plugin = env.SharedLibrary(output_name, source)
 
 # 默认目标 / Default target / Standardziel
 Default(plugin)
-
