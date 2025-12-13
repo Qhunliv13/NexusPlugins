@@ -278,7 +278,7 @@ target_interface_state_t* find_or_create_interface_state(const char* plugin_name
  /**
   * @brief 调用目标插件接口（内部实现） / Call target plugin interface (internal implementation) / Ziel-Plugin-Schnittstelle aufrufen (interne Implementierung)
   */
- static int call_target_plugin_interface_internal(const pointer_transfer_rule_t* rule, void* ptr, int recursion_depth, const char* call_chain[], size_t call_chain_size) {
+ static int call_target_plugin_interface_internal(const pointer_transfer_rule_t* rule, void* ptr, int recursion_depth, const char* call_chain[], size_t call_chain_size, int skip_param_cleanup) {
      if (recursion_depth > 32) {
          internal_log_write("WARNING", "High recursion depth detected in call_target_plugin_interface (depth=%d)", recursion_depth);
      }
@@ -635,8 +635,13 @@ target_interface_state_t* find_or_create_interface_state(const char* plugin_name
     }
     
     /* 匹配 SourceParamIndex=-1 的传递规则 / Match transfer rules with SourceParamIndex=-1 / Übertragungsregeln mit SourceParamIndex=-1 abgleichen */
+    /* 首先收集所有匹配的规则，然后按SetGroup分组处理 / First collect all matching rules, then process by SetGroup / Zuerst alle passenden Regeln sammeln, dann nach SetGroup gruppiert verarbeiten */
     if (ctx->rules != NULL) {
-        for (size_t i = 0; i < ctx->rule_count; i++) {
+        /* 收集所有匹配的规则索引 / Collect all matching rule indices / Alle passenden Regelindizes sammeln */
+        size_t matched_rules[256];
+        size_t matched_count = 0;
+        
+        for (size_t i = 0; i < ctx->rule_count && matched_count < sizeof(matched_rules) / sizeof(matched_rules[0]); i++) {
             pointer_transfer_rule_t* active_rule = &ctx->rules[i];
             if (!active_rule->enabled || active_rule->source_plugin == NULL || active_rule->source_interface == NULL) {
                 continue;
@@ -645,97 +650,361 @@ target_interface_state_t* find_or_create_interface_state(const char* plugin_name
             if (active_rule->source_param_index == -1 &&
                 strcmp(active_rule->source_plugin, rule->target_plugin) == 0 &&
                 strcmp(active_rule->source_interface, rule->target_interface) == 0) {
+                matched_rules[matched_count++] = i;
+            }
+        }
+        
+        /* 按SetGroup分组处理规则 / Process rules grouped by SetGroup / Regeln nach SetGroup gruppiert verarbeiten */
+        int processed[256] = {0}; /* 标记已处理的规则 / Mark processed rules / Verarbeitete Regeln markieren */
+        
+        for (size_t match_idx = 0; match_idx < matched_count; match_idx++) {
+            if (processed[match_idx]) {
+                continue;
+            }
+            
+            size_t i = matched_rules[match_idx];
+            pointer_transfer_rule_t* active_rule = &ctx->rules[i];
+            
+            /* 检查是否有SetGroup / Check if has SetGroup / Prüfen, ob SetGroup vorhanden */
+            if (active_rule->set_group != NULL && strlen(active_rule->set_group) > 0 &&
+                active_rule->target_plugin != NULL && active_rule->target_interface != NULL) {
                 
-                /* 设置组检查：如果规则属于设置组，检查是否有其他规则会设置后续参数 / Set group check: if rule belongs to set group, check if other rules will set subsequent parameters / Set-Gruppenprüfung: Wenn Regel zur Set-Gruppe gehört, prüfen, ob andere Regeln nachfolgende Parameter setzen */
-                int should_check_group = 0;
-                int is_min_param_index = 1;  /* 当前规则是否是参数索引最小的规则 / Is current rule the one with minimum parameter index / Ist aktuelle Regel die mit minimalem Parameterindex */
-                if (active_rule->set_group != NULL && 
-                    strlen(active_rule->set_group) > 0 &&
-                    active_rule->target_plugin != NULL && active_rule->target_interface != NULL &&
-                    active_rule->target_param_index >= 0) {
-                    internal_log_write("INFO", "Set group check: rule %zu has set_group=%s, target=%s.%s[%d]", 
-                        i, active_rule->set_group, active_rule->target_plugin, active_rule->target_interface, active_rule->target_param_index);
-                    /* 检查同一组内是否有其他规则会设置后续参数，以及是否有规则设置更小的参数索引 / Check if other rules in same group will set subsequent parameters, and if any rule sets smaller parameter index / Prüfen, ob andere Regeln in derselben Gruppe nachfolgende Parameter setzen, und ob eine Regel kleineren Parameterindex setzt */
-                    for (size_t j = 0; j < ctx->rule_count; j++) {
-                        if (j == i) continue;
-                        pointer_transfer_rule_t* group_rule = &ctx->rules[j];
-                        if (group_rule->enabled && group_rule->set_group != NULL &&
-                            strcmp(group_rule->set_group, active_rule->set_group) == 0 &&
-                            group_rule->source_param_index == -1 &&
-                            group_rule->source_plugin != NULL && group_rule->source_interface != NULL &&
-                            active_rule->source_plugin != NULL && active_rule->source_interface != NULL &&
-                            strcmp(group_rule->source_plugin, active_rule->source_plugin) == 0 &&
-                            strcmp(group_rule->source_interface, active_rule->source_interface) == 0 &&
-                            group_rule->target_plugin != NULL && group_rule->target_interface != NULL &&
-                            strcmp(group_rule->target_plugin, active_rule->target_plugin) == 0 &&
-                            strcmp(group_rule->target_interface, active_rule->target_interface) == 0) {
-                            if (group_rule->target_param_index > active_rule->target_param_index) {
-                                /* 找到同一组内会设置后续参数的规则，需要检查参数就绪状态 / Found rule in same group that will set subsequent parameter, need to check parameter readiness / Regel in derselben Gruppe gefunden, die nachfolgende Parameter setzt, Parameterbereitschaft prüfen */
-                                should_check_group = 1;
-                                internal_log_write("INFO", "Set group check: rule %zu belongs to set group %s, found subsequent rule %zu that will set parameter %d", 
-                                    i, active_rule->set_group, j, group_rule->target_param_index);
-                            }
-                            if (group_rule->target_param_index < active_rule->target_param_index) {
-                                /* 找到同一组内会设置更小参数索引的规则，当前规则不是最小索引 / Found rule in same group that will set smaller parameter index, current rule is not minimum / Regel in derselben Gruppe gefunden, die kleineren Parameterindex setzt, aktuelle Regel ist nicht Minimum */
-                                is_min_param_index = 0;
-                            }
-                        }
-                    }
-                } else if (active_rule->set_group == NULL) {
-                    internal_log_write("INFO", "Set group check: rule %zu has no set_group", i);
-                }
+                /* 收集同一SetGroup中的所有规则 / Collect all rules in same SetGroup / Alle Regeln in derselben SetGroup sammeln */
+                size_t group_rules[64];
+                size_t group_count = 0;
                 
-                /* 提前检查参数就绪状态，避免不必要的调用尝试 / Pre-check parameter readiness to avoid unnecessary call attempts / Vorabprüfung der Parameterbereitschaft, um unnötige Aufrufversuche zu vermeiden */
-                if (active_rule->target_plugin != NULL && active_rule->target_interface != NULL && active_rule->target_param_index >= 0) {
-                    target_interface_state_t* target_state = find_interface_state(active_rule->target_plugin, active_rule->target_interface);
-                    if (target_state != NULL && target_state->param_ready != NULL) {
-                        /* 检查目标参数索引之前的所有参数是否就绪 / Check if all parameters before target parameter index are ready / Prüfen, ob alle Parameter vor dem Zielparameterindex bereit sind */
-                        int can_apply = 1;
-                        int check_limit = active_rule->target_param_index;
-                        if (target_state->is_variadic) {
-                            /* 可变参数接口：检查到目标参数索引之前的所有参数 / Variadic interface: check all parameters before target parameter index / Variabler Parameter-Interface: Alle Parameter vor Zielparameterindex prüfen */
-                            for (int j = 0; j < check_limit && j < target_state->param_count; j++) {
-                                if (!target_state->param_ready[j]) {
-                                    can_apply = 0;
-                                    break;
-                                }
-                            }
-                            if (can_apply && check_limit < target_state->min_param_count) {
-                                int ready_count_after_set = check_limit + 1;
-                                if (ready_count_after_set < target_state->min_param_count) {
-                                    can_apply = 0;
-                                }
-                            }
-                        } else {
-                            /* 固定参数接口：检查目标参数索引之前的所有参数是否就绪 / Fixed parameter interface: check if all parameters before target parameter index are ready / Fester Parameter-Interface: Prüfen, ob alle Parameter vor dem Zielparameterindex bereit sind */
-                            for (int j = 0; j < check_limit && j < target_state->param_count; j++) {
-                                if (!target_state->param_ready[j]) {
-                                    can_apply = 0;
-                                    break;
-                                }
-                            }
-                            /* 固定参数接口：目标参数索引必须小于参数总数 / Fixed parameter interface: target parameter index must be less than total parameter count / Fester Parameter-Interface: Zielparameterindex muss kleiner als Gesamtparameteranzahl sein */
-                            if (can_apply && active_rule->target_param_index >= target_state->param_count) {
-                                can_apply = 0;
-                            }
-                        }
-                        
-                        if (!can_apply) {
-                            /* 参数未就绪，跳过此规则 / Parameters not ready, skip this rule / Parameter nicht bereit, diese Regel überspringen */
-                            continue;
-                        }
-                    } else if (should_check_group && !is_min_param_index) {
-                        /* 设置组检查：接口状态不存在，但同一组内有规则会设置后续参数，且当前规则不是参数索引最小的规则，跳过当前规则等待接口状态创建 / Set group check: interface state does not exist, but rules in same group will set subsequent parameters, and current rule is not the one with minimum parameter index, skip current rule and wait for interface state creation / Set-Gruppenprüfung: Schnittstellenstatus existiert nicht, aber Regeln in derselben Gruppe setzen nachfolgende Parameter, und aktuelle Regel ist nicht die mit minimalem Parameterindex, aktuelle Regel überspringen und auf Schnittstellenstatus-Erstellung warten */
-                        internal_log_write("INFO", "Set group check: skipping rule %zu (target state not exists, subsequent rule will set parameter, current rule is not minimum param index)", i);
+                for (size_t j = 0; j < matched_count && group_count < sizeof(group_rules) / sizeof(group_rules[0]); j++) {
+                    if (processed[j]) {
                         continue;
                     }
+                    size_t rule_idx = matched_rules[j];
+                    pointer_transfer_rule_t* group_rule = &ctx->rules[rule_idx];
+                    if (group_rule->set_group != NULL && 
+                        strcmp(group_rule->set_group, active_rule->set_group) == 0 &&
+                        group_rule->target_plugin != NULL && group_rule->target_interface != NULL &&
+                        strcmp(group_rule->target_plugin, active_rule->target_plugin) == 0 &&
+                        strcmp(group_rule->target_interface, active_rule->target_interface) == 0) {
+                        group_rules[group_count++] = rule_idx;
+                        processed[j] = 1;
+                    }
                 }
                 
-                internal_log_write("INFO", "Found active call rule %zu: %s.%s -> %s.%s", 
-                              i, active_rule->source_plugin, active_rule->source_interface,
-                              active_rule->target_plugin != NULL ? active_rule->target_plugin : "unknown",
-                              active_rule->target_interface != NULL ? active_rule->target_interface : "unknown");
+                /* 按target_param_index排序 / Sort by target_param_index / Nach target_param_index sortieren */
+                for (size_t a = 0; a < group_count; a++) {
+                    for (size_t b = a + 1; b < group_count; b++) {
+                        pointer_transfer_rule_t* rule_a = &ctx->rules[group_rules[a]];
+                        pointer_transfer_rule_t* rule_b = &ctx->rules[group_rules[b]];
+                        if (rule_a->target_param_index > rule_b->target_param_index) {
+                            size_t temp = group_rules[a];
+                            group_rules[a] = group_rules[b];
+                            group_rules[b] = temp;
+                        }
+                    }
+                }
                 
+                /* 按顺序执行SetGroup中的规则，每次重新调用源接口 / Execute rules in SetGroup sequentially, re-call source interface each time / Regeln in SetGroup sequenziell ausführen, Quellschnittstelle jedes Mal neu aufrufen */
+                for (size_t group_idx = 0; group_idx < group_count; group_idx++) {
+                    size_t rule_idx = group_rules[group_idx];
+                    pointer_transfer_rule_t* group_rule = &ctx->rules[rule_idx];
+                    
+                    /* 为SetGroup中的每个规则重新调用源接口以获取新的返回值 / Re-call source interface for each rule in SetGroup to get new return value / Quellschnittstelle für jede Regel in SetGroup neu aufrufen, um neuen Rückgabewert zu erhalten */
+                    int64_t group_result_int = result_int;
+                    double group_result_float = result_float;
+                    pt_return_type_t group_return_type = return_type;
+                    size_t group_return_size = return_size;
+                    void* group_struct_buffer = NULL;
+                    
+                    if (group_rule->source_plugin != NULL && group_rule->source_interface != NULL) {
+                        target_interface_state_t* source_state = find_interface_state(group_rule->source_plugin, group_rule->source_interface);
+                        if (source_state != NULL && source_state->func_ptr != NULL) {
+                            /* 重新调用源接口获取新的返回值 / Re-call source interface to get new return value / Quellschnittstelle neu aufrufen, um neuen Rückgabewert zu erhalten */
+                            int source_actual_param_count = source_state->param_count;
+                            if (source_state->is_variadic) {
+                                source_actual_param_count = 0;
+                                if (source_state->param_ready != NULL) {
+                                    for (int i = 0; i < source_state->param_count; i++) {
+                                        if (source_state->param_ready[i]) {
+                                            source_actual_param_count = i + 1;
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            pt_return_type_t source_return_type = source_state->return_type;
+                            size_t source_return_size = source_state->return_size;
+                            
+                            if (source_return_type == PT_RETURN_TYPE_STRUCT_PTR && source_return_size > 0) {
+#ifdef _WIN32
+                                if (source_return_size > 8) {
+                                    source_return_type = PT_RETURN_TYPE_STRUCT_VAL;
+                                }
+#else
+                                if (source_return_size > 16) {
+                                    source_return_type = PT_RETURN_TYPE_STRUCT_VAL;
+                                }
+#endif
+                            }
+                            
+                            if (source_return_type == PT_RETURN_TYPE_STRUCT_VAL && source_return_size > 0) {
+                                group_struct_buffer = malloc(source_return_size);
+                                if (group_struct_buffer != NULL) {
+                                    memset(group_struct_buffer, 0, source_return_size);
+                                }
+                            }
+                            
+                            if (source_state->param_types != NULL && source_state->param_values != NULL) {
+                                int64_t temp_result_int = 0;
+                                double temp_result_float = 0.0;
+                                int32_t source_call_result = pt_platform_safe_call(source_state->func_ptr, source_actual_param_count,
+                                                                                  (void*)source_state->param_types, source_state->param_values,
+                                                                                  (void*)source_state->param_sizes,
+                                                                                  source_return_type, source_return_size, &temp_result_int, &temp_result_float, group_struct_buffer);
+                                if (source_call_result == 0) {
+                                    group_result_int = temp_result_int;
+                                    group_result_float = temp_result_float;
+                                    group_return_type = source_return_type;
+                                    group_return_size = source_return_size;
+                                    internal_log_write("INFO", "Re-called source interface %s.%s for SetGroup rule %zu, new result = %lld", 
+                                                  group_rule->source_plugin, group_rule->source_interface, rule_idx, (long long)group_result_int);
+                                } else {
+                                    internal_log_write("WARNING", "Failed to re-call source interface %s.%s for SetGroup rule %zu (error=%d), using original return value", 
+                                                  group_rule->source_plugin, group_rule->source_interface, rule_idx, source_call_result);
+                                    if (group_struct_buffer != NULL) {
+                                        free(group_struct_buffer);
+                                        group_struct_buffer = NULL;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    /* 设置组检查：如果规则属于设置组，检查是否有其他规则会设置后续参数 / Set group check: if rule belongs to set group, check if other rules will set subsequent parameters / Set-Gruppenprüfung: Wenn Regel zur Set-Gruppe gehört, prüfen, ob andere Regeln nachfolgende Parameter setzen */
+                    int should_check_group = 0;
+                    int is_min_param_index = 1;  /* 当前规则是否是参数索引最小的规则 / Is current rule the one with minimum parameter index / Ist aktuelle Regel die mit minimalem Parameterindex */
+                    if (group_rule->set_group != NULL && 
+                        strlen(group_rule->set_group) > 0 &&
+                        group_rule->target_plugin != NULL && group_rule->target_interface != NULL &&
+                        group_rule->target_param_index >= 0) {
+                        internal_log_write("INFO", "Set group check: rule %zu has set_group=%s, target=%s.%s[%d]", 
+                            rule_idx, group_rule->set_group, group_rule->target_plugin, group_rule->target_interface, group_rule->target_param_index);
+                        /* 检查同一组内是否有其他规则会设置后续参数，以及是否有规则设置更小的参数索引 / Check if other rules in same group will set subsequent parameters, and if any rule sets smaller parameter index / Prüfen, ob andere Regeln in derselben Gruppe nachfolgende Parameter setzen, und ob eine Regel kleineren Parameterindex setzt */
+                        for (size_t j = 0; j < ctx->rule_count; j++) {
+                            if (j == rule_idx) continue;
+                            pointer_transfer_rule_t* check_rule = &ctx->rules[j];
+                            if (check_rule->enabled && check_rule->set_group != NULL &&
+                                strcmp(check_rule->set_group, group_rule->set_group) == 0 &&
+                                check_rule->source_param_index == -1 &&
+                                check_rule->source_plugin != NULL && check_rule->source_interface != NULL &&
+                                group_rule->source_plugin != NULL && group_rule->source_interface != NULL &&
+                                strcmp(check_rule->source_plugin, group_rule->source_plugin) == 0 &&
+                                strcmp(check_rule->source_interface, group_rule->source_interface) == 0 &&
+                                check_rule->target_plugin != NULL && check_rule->target_interface != NULL &&
+                                strcmp(check_rule->target_plugin, group_rule->target_plugin) == 0 &&
+                                strcmp(check_rule->target_interface, group_rule->target_interface) == 0) {
+                                if (check_rule->target_param_index > group_rule->target_param_index) {
+                                    /* 找到同一组内会设置后续参数的规则，需要检查参数就绪状态 / Found rule in same group that will set subsequent parameter, need to check parameter readiness / Regel in derselben Gruppe gefunden, die nachfolgende Parameter setzt, Parameterbereitschaft prüfen */
+                                    should_check_group = 1;
+                                    internal_log_write("INFO", "Set group check: rule %zu belongs to set group %s, found subsequent rule %zu that will set parameter %d", 
+                                        rule_idx, group_rule->set_group, j, check_rule->target_param_index);
+                                }
+                                if (check_rule->target_param_index < group_rule->target_param_index) {
+                                    /* 找到同一组内会设置更小参数索引的规则，当前规则不是最小索引 / Found rule in same group that will set smaller parameter index, current rule is not minimum / Regel in derselben Gruppe gefunden, die kleineren Parameterindex setzt, aktuelle Regel ist nicht Minimum */
+                                    is_min_param_index = 0;
+                                }
+                            }
+                        }
+                    } else if (group_rule->set_group == NULL) {
+                        internal_log_write("INFO", "Set group check: rule %zu has no set_group", rule_idx);
+                    }
+                    
+                    /* 提前检查参数就绪状态，避免不必要的调用尝试 / Pre-check parameter readiness to avoid unnecessary call attempts / Vorabprüfung der Parameterbereitschaft, um unnötige Aufrufversuche zu vermeiden */
+                    if (group_rule->target_plugin != NULL && group_rule->target_interface != NULL && group_rule->target_param_index >= 0) {
+                        target_interface_state_t* target_state = find_interface_state(group_rule->target_plugin, group_rule->target_interface);
+                        if (target_state != NULL && target_state->param_ready != NULL) {
+                            /* 检查目标参数索引之前的所有参数是否就绪 / Check if all parameters before target parameter index are ready / Prüfen, ob alle Parameter vor dem Zielparameterindex bereit sind */
+                            int can_apply = 1;
+                            int check_limit = group_rule->target_param_index;
+                            if (target_state->is_variadic) {
+                                /* 可变参数接口：检查到目标参数索引之前的所有参数 / Variadic interface: check all parameters before target parameter index / Variabler Parameter-Interface: Alle Parameter vor Zielparameterindex prüfen */
+                                for (int j = 0; j < check_limit && j < target_state->param_count; j++) {
+                                    if (!target_state->param_ready[j]) {
+                                        can_apply = 0;
+                                        break;
+                                    }
+                                }
+                                if (can_apply && check_limit < target_state->min_param_count) {
+                                    int ready_count_after_set = check_limit + 1;
+                                    if (ready_count_after_set < target_state->min_param_count) {
+                                        can_apply = 0;
+                                    }
+                                }
+                            } else {
+                                /* 固定参数接口：检查目标参数索引之前的所有参数是否就绪 / Fixed parameter interface: check if all parameters before target parameter index are ready / Fester Parameter-Interface: Prüfen, ob alle Parameter vor dem Zielparameterindex bereit sind */
+                                for (int j = 0; j < check_limit && j < target_state->param_count; j++) {
+                                    if (!target_state->param_ready[j]) {
+                                        can_apply = 0;
+                                        break;
+                                    }
+                                }
+                                /* 固定参数接口：目标参数索引必须小于参数总数 / Fixed parameter interface: target parameter index must be less than total parameter count / Fester Parameter-Interface: Zielparameterindex muss kleiner als Gesamtparameteranzahl sein */
+                                if (can_apply && group_rule->target_param_index >= target_state->param_count) {
+                                    can_apply = 0;
+                                }
+                            }
+                            
+                            if (!can_apply) {
+                                /* 参数未就绪，跳过此规则 / Parameters not ready, skip this rule / Parameter nicht bereit, diese Regel überspringen */
+                                continue;
+                            }
+                        } else if (should_check_group && !is_min_param_index) {
+                            /* 设置组检查：接口状态不存在，但同一组内有规则会设置后续参数，且当前规则不是参数索引最小的规则，跳过当前规则等待接口状态创建 / Set group check: interface state does not exist, but rules in same group will set subsequent parameters, and current rule is not the one with minimum parameter index, skip current rule and wait for interface state creation / Set-Gruppenprüfung: Schnittstellenstatus existiert nicht, aber Regeln in derselben Gruppe setzen nachfolgende Parameter, und aktuelle Regel ist nicht die mit minimalem Parameterindex, aktuelle Regel überspringen und auf Schnittstellenstatus-Erstellung warten */
+                            internal_log_write("INFO", "Set group check: skipping rule %zu (target state not exists, subsequent rule will set parameter, current rule is not minimum param index)", rule_idx);
+                            continue;
+                        }
+                    }
+                    
+                    internal_log_write("INFO", "Found active call rule %zu: %s.%s -> %s.%s", 
+                                  rule_idx, group_rule->source_plugin, group_rule->source_interface,
+                                  group_rule->target_plugin != NULL ? group_rule->target_plugin : "unknown",
+                                  group_rule->target_interface != NULL ? group_rule->target_interface : "unknown");
+                    
+                    void* call_param = NULL;
+                    if (group_rule->target_param_value != NULL && strlen(group_rule->target_param_value) > 0) {
+                        call_param = (void*)group_rule->target_param_value;
+                    } else {
+                        /* 根据返回值类型选择传递参数 / Select transfer parameter by return type / Übertragungsparameter nach Rückgabetyp auswählen */
+                        if (group_return_type == PT_RETURN_TYPE_FLOAT || group_return_type == PT_RETURN_TYPE_DOUBLE) {
+                            call_param = &group_result_float;
+                            internal_log_write("INFO", "Using float return value %lf for transfer", group_result_float);
+                        } else if (group_return_type == PT_RETURN_TYPE_STRUCT_VAL && group_struct_buffer != NULL) {
+                            /* PT_RETURN_TYPE_STRUCT_VAL: 传递 struct_buffer / PT_RETURN_TYPE_STRUCT_VAL: pass struct_buffer / PT_RETURN_TYPE_STRUCT_VAL: struct_buffer übergeben */
+                            call_param = group_struct_buffer;
+                            internal_log_write("INFO", "Using struct return value (size=%zu) for transfer", group_return_size);
+                        } else if (group_return_type == PT_RETURN_TYPE_STRUCT_PTR) {
+                            /* PT_RETURN_TYPE_STRUCT_PTR: 传递指针值（字符串指针等）/ PT_RETURN_TYPE_STRUCT_PTR: pass pointer value (string pointer etc.) / PT_RETURN_TYPE_STRUCT_PTR: Zeigerwert übergeben (Zeichenfolgenzeiger usw.) */
+                            call_param = (void*)(intptr_t)group_result_int;
+                            ctx->stored_size = sizeof(void*);
+                            ctx->stored_type = NXLD_PARAM_TYPE_STRING;
+                            internal_log_write("INFO", "Using pointer return value %p for transfer", (void*)(intptr_t)group_result_int);
+                        } else {
+                            /* 其他类型: 传递 result_int / Other types: pass result_int / Andere Typen: result_int übergeben */
+                            call_param = &group_result_int;
+                            ctx->stored_size = sizeof(int64_t);
+                            ctx->stored_type = NXLD_PARAM_TYPE_INT64;
+                            internal_log_write("INFO", "Using integer/pointer return value %lld for transfer", (long long)group_result_int);
+                        }
+                    }
+                    
+                    const char* new_call_chain[64];
+                    size_t new_call_chain_size = 0;
+                    if (call_chain_size < sizeof(new_call_chain) / sizeof(new_call_chain[0])) {
+                        for (size_t chain_idx = 0; chain_idx < call_chain_size; chain_idx++) {
+                            new_call_chain[chain_idx] = call_chain[chain_idx];
+                        }
+                        new_call_chain_size = call_chain_size;
+                    } else {
+                        size_t start_idx = call_chain_size - (sizeof(new_call_chain) / sizeof(new_call_chain[0]) - 1);
+                        for (size_t chain_idx = start_idx; chain_idx < call_chain_size; chain_idx++) {
+                            new_call_chain[chain_idx - start_idx] = call_chain[chain_idx];
+                        }
+                        new_call_chain_size = call_chain_size - start_idx;
+                    }
+                    
+                    if (rule->target_plugin != NULL && rule->target_interface != NULL && new_call_chain_size < sizeof(new_call_chain) / sizeof(new_call_chain[0])) {
+                        static char current_call_identifiers[64][512];
+                        static size_t current_call_id_index = 0;
+                        size_t current_id_index = current_call_id_index % (sizeof(current_call_identifiers) / sizeof(current_call_identifiers[0]));
+                        snprintf(current_call_identifiers[current_id_index], sizeof(current_call_identifiers[0]), "%s.%s", rule->target_plugin, rule->target_interface);
+                        new_call_chain[new_call_chain_size] = current_call_identifiers[current_id_index];
+                        new_call_chain_size++;
+                        current_call_id_index++;
+                    }
+                
+                    /* SetGroup处理中，跳过参数清理，直到所有规则处理完毕 / In SetGroup processing, skip parameter cleanup until all rules are processed / In SetGroup-Verarbeitung Parameterbereinigung überspringen, bis alle Regeln verarbeitet sind */
+                    int active_call_result = call_target_plugin_interface_internal(group_rule, call_param, recursion_depth + 1, new_call_chain, new_call_chain_size, 1);
+                    if (active_call_result == 0) {
+                        internal_log_write("INFO", "Successfully executed active call rule %zu", rule_idx);
+                    } else {
+                        internal_log_write("WARNING", "Failed to execute active call rule %zu (error=%d)", rule_idx, active_call_result);
+                    }
+                    
+                    /* 释放SetGroup规则使用的struct_buffer / Free struct_buffer used by SetGroup rule / Von SetGroup-Regel verwendeten struct_buffer freigeben */
+                    if (group_struct_buffer != NULL) {
+                        free(group_struct_buffer);
+                        group_struct_buffer = NULL;
+                    }
+                    
+                    /* UNICAST模式：对于返回值传递，允许传递给同一个接口的不同参数索引，只有当找到完全相同的目标位置时才停止 / UNICAST mode: for return value transfer, allow passing to different parameter indices of the same interface, only stop when exact duplicate target is found / UNICAST-Modus: Für Rückgabewertübertragung, Übergabe an verschiedene Parameterindizes derselben Schnittstelle zulassen, nur stoppen, wenn exaktes doppeltes Ziel gefunden wird */
+                    /* 注意：对于SetGroup中的规则，即使目标位置相同，也应该继续执行，因为每次都会重新调用源接口获取新的返回值 / Note: For rules in SetGroup, even if target location is same, should continue execution, because source interface is re-called each time to get new return value / Hinweis: Für Regeln in SetGroup, auch wenn Zielposition gleich ist, sollte Ausführung fortgesetzt werden, da Quellschnittstelle jedes Mal neu aufgerufen wird, um neuen Rückgabewert zu erhalten */
+                    if (group_rule->transfer_mode == TRANSFER_MODE_UNICAST) {
+                        /* 检查SetGroup中是否还有其他规则要处理 / Check if there are more rules in SetGroup to process / Prüfen, ob noch weitere Regeln in SetGroup zu verarbeiten sind */
+                        int has_more_in_group = 0;
+                        for (size_t j = group_idx + 1; j < group_count; j++) {
+                            size_t next_rule_idx = group_rules[j];
+                            pointer_transfer_rule_t* next_group_rule = &ctx->rules[next_rule_idx];
+                            if (next_group_rule->enabled && 
+                                next_group_rule->target_plugin != NULL && next_group_rule->target_interface != NULL &&
+                                group_rule->target_plugin != NULL && group_rule->target_interface != NULL &&
+                                strcmp(next_group_rule->target_plugin, group_rule->target_plugin) == 0 &&
+                                strcmp(next_group_rule->target_interface, group_rule->target_interface) == 0 &&
+                                next_group_rule->target_param_index == group_rule->target_param_index) {
+                                /* SetGroup中还有相同目标位置的规则，继续执行 / More rules with same target location in SetGroup, continue execution / Weitere Regeln mit gleicher Zielposition in SetGroup, Ausführung fortsetzen */
+                                has_more_in_group = 1;
+                                break;
+                            }
+                        }
+                        /* 如果SetGroup中还有规则要处理，不停止 / If there are more rules in SetGroup to process, don't stop / Wenn noch weitere Regeln in SetGroup zu verarbeiten sind, nicht stoppen */
+                        if (has_more_in_group) {
+                            continue;
+                        }
+                        
+                        /* 检查是否有其他规则（不在SetGroup中）匹配完全相同的目标位置 / Check if other rules (not in SetGroup) match the exact same target location / Prüfen, ob andere Regeln (nicht in SetGroup) exakt dieselbe Zielposition abgleichen */
+                        int has_exact_duplicate = 0;
+                        for (size_t j = rule_idx + 1; j < ctx->rule_count; j++) {
+                            pointer_transfer_rule_t* next_rule = &ctx->rules[j];
+                            if (!next_rule->enabled || next_rule->source_plugin == NULL || next_rule->source_interface == NULL) {
+                                continue;
+                            }
+                            /* 跳过SetGroup中的其他规则 / Skip other rules in SetGroup / Andere Regeln in SetGroup überspringen */
+                            if (next_rule->set_group != NULL && strlen(next_rule->set_group) > 0 &&
+                                group_rule->set_group != NULL && strcmp(next_rule->set_group, group_rule->set_group) == 0) {
+                                continue;
+                            }
+                            if (next_rule->source_param_index == -1 &&
+                                strcmp(next_rule->source_plugin, rule->target_plugin) == 0 &&
+                                strcmp(next_rule->source_interface, rule->target_interface) == 0 &&
+                                next_rule->target_plugin != NULL && next_rule->target_interface != NULL &&
+                                group_rule->target_plugin != NULL && group_rule->target_interface != NULL &&
+                                strcmp(next_rule->target_plugin, group_rule->target_plugin) == 0 &&
+                                strcmp(next_rule->target_interface, group_rule->target_interface) == 0 &&
+                                next_rule->target_param_index == group_rule->target_param_index) {
+                                has_exact_duplicate = 1;
+                                break;
+                            }
+                        }
+                        /* 只有在找到完全相同的目标位置时才停止，允许传递给同一接口的不同参数 / Only stop when exact duplicate target is found, allow passing to different parameters of the same interface / Nur stoppen, wenn exaktes doppeltes Ziel gefunden wird, Übergabe an verschiedene Parameter derselben Schnittstelle zulassen */
+                        if (has_exact_duplicate) {
+                            break;
+                        }
+                    }
+                }
+                
+                /* SetGroup处理完成后，清理目标接口的参数状态 / After SetGroup processing, cleanup parameter state of target interface / Nach SetGroup-Verarbeitung Parameterstatus der Zielschnittstelle bereinigen */
+                if (group_count > 0 && active_rule->target_plugin != NULL && active_rule->target_interface != NULL) {
+                    target_interface_state_t* target_state = find_interface_state(active_rule->target_plugin, active_rule->target_interface);
+                    if (target_state != NULL && target_state->param_count > 0 && target_state->param_ready != NULL && target_state->param_values != NULL) {
+                        for (int i = 0; i < target_state->param_count; i++) {
+                            target_state->param_ready[i] = 0;
+                            target_state->param_values[i] = NULL;
+                        }
+                        internal_log_write("INFO", "Cleaned up parameter state for SetGroup target interface %s.%s", 
+                                      active_rule->target_plugin, active_rule->target_interface);
+                    }
+                }
+            } else {
+                /* 处理没有SetGroup的规则 / Process rules without SetGroup / Regeln ohne SetGroup verarbeiten */
                 void* call_param = NULL;
                 if (active_rule->target_param_value != NULL && strlen(active_rule->target_param_value) > 0) {
                     call_param = (void*)active_rule->target_param_value;
@@ -745,18 +1014,17 @@ target_interface_state_t* find_or_create_interface_state(const char* plugin_name
                         call_param = &result_float;
                         internal_log_write("INFO", "Using float return value %lf for transfer", result_float);
                     } else if (return_type == PT_RETURN_TYPE_STRUCT_VAL && struct_buffer != NULL) {
-                        /* PT_RETURN_TYPE_STRUCT_VAL: 传递 struct_buffer / PT_RETURN_TYPE_STRUCT_VAL: pass struct_buffer / PT_RETURN_TYPE_STRUCT_VAL: struct_buffer übergeben */
                         call_param = struct_buffer;
                         internal_log_write("INFO", "Using struct return value (size=%zu) for transfer", return_size);
                     } else if (return_type == PT_RETURN_TYPE_STRUCT_PTR) {
-                        /* PT_RETURN_TYPE_STRUCT_PTR: 传递指针值（字符串指针等）/ PT_RETURN_TYPE_STRUCT_PTR: pass pointer value (string pointer etc.) / PT_RETURN_TYPE_STRUCT_PTR: Zeigerwert übergeben (Zeichenfolgenzeiger usw.) */
                         call_param = (void*)(intptr_t)result_int;
                         ctx->stored_size = sizeof(void*);
                         ctx->stored_type = NXLD_PARAM_TYPE_STRING;
                         internal_log_write("INFO", "Using pointer return value %p for transfer", (void*)(intptr_t)result_int);
                     } else {
-                        /* 其他类型: 传递 result_int / Other types: pass result_int / Andere Typen: result_int übergeben */
                         call_param = &result_int;
+                        ctx->stored_size = sizeof(int64_t);
+                        ctx->stored_type = NXLD_PARAM_TYPE_INT64;
                         internal_log_write("INFO", "Using integer/pointer return value %lld for transfer", (long long)result_int);
                     }
                 }
@@ -786,11 +1054,16 @@ target_interface_state_t* find_or_create_interface_state(const char* plugin_name
                     current_call_id_index++;
                 }
                 
-                int active_call_result = call_target_plugin_interface_internal(active_rule, call_param, recursion_depth + 1, new_call_chain, new_call_chain_size);
+                internal_log_write("INFO", "Found active call rule %zu (no SetGroup): %s.%s -> %s.%s", 
+                              i, active_rule->source_plugin, active_rule->source_interface,
+                              active_rule->target_plugin != NULL ? active_rule->target_plugin : "unknown",
+                              active_rule->target_interface != NULL ? active_rule->target_interface : "unknown");
+                
+                int active_call_result = call_target_plugin_interface_internal(active_rule, call_param, recursion_depth + 1, new_call_chain, new_call_chain_size, 0);
                 if (active_call_result == 0) {
-                    internal_log_write("INFO", "Successfully executed active call rule %zu", i);
+                    internal_log_write("INFO", "Successfully executed active call rule %zu (no SetGroup)", i);
                 } else {
-                    internal_log_write("WARNING", "Failed to execute active call rule %zu (error=%d)", i, active_call_result);
+                    internal_log_write("WARNING", "Failed to execute active call rule %zu (no SetGroup, error=%d)", i, active_call_result);
                 }
                 
                 /* UNICAST模式：对于返回值传递，允许传递给同一个接口的不同参数索引，只有当找到完全相同的目标位置时才停止 / UNICAST mode: for return value transfer, allow passing to different parameter indices of the same interface, only stop when exact duplicate target is found / UNICAST-Modus: Für Rückgabewertübertragung, Übergabe an verschiedene Parameterindizes derselben Schnittstelle zulassen, nur stoppen, wenn exaktes doppeltes Ziel gefunden wird */
@@ -829,30 +1102,46 @@ target_interface_state_t* find_or_create_interface_state(const char* plugin_name
          struct_buffer = NULL;
      }
      
-     if (ctx->rules != NULL) {
+     /* 检查是否有规则需要从该接口的参数中获取值（source_param_index >= 0）/ Check if there are rules that need to get parameter values from this interface (source_param_index >= 0) / Prüfen, ob es Regeln gibt, die Parameterwerte von dieser Schnittstelle abrufen müssen (source_param_index >= 0) */
+     if (ctx->rules != NULL && rule != NULL && rule->target_plugin != NULL && rule->target_interface != NULL && state != NULL) {
          for (size_t i = 0; i < ctx->rule_count; i++) {
-             pointer_transfer_rule_t* export_rule = &ctx->rules[i];
-             if (!export_rule->enabled || export_rule->source_plugin == NULL || export_rule->source_interface == NULL) {
+             pointer_transfer_rule_t* param_rule = &ctx->rules[i];
+             if (!param_rule->enabled || param_rule->source_plugin == NULL || param_rule->source_interface == NULL) {
                  continue;
              }
              
-             if (rule != NULL && rule->target_plugin != NULL && 
-                 export_rule->source_plugin != NULL && 
-                 strcmp(export_rule->source_plugin, rule->target_plugin) == 0 && 
-                 export_rule->source_param_index == 0) {
-                 internal_log_write("INFO", "Export interface rule found: %s.%s -> %s.%s (deferred call mode)", 
-                              export_rule->source_plugin, export_rule->source_interface,
-                              export_rule->target_plugin != NULL ? export_rule->target_plugin : "unknown",
-                              export_rule->target_interface != NULL ? export_rule->target_interface : "unknown");
-                 break;
+             /* 检查规则是否匹配当前接口，且source_param_index >= 0（需要从参数中获取值）/ Check if rule matches current interface and source_param_index >= 0 (needs to get value from parameter) / Prüfen, ob Regel mit aktueller Schnittstelle übereinstimmt und source_param_index >= 0 (muss Wert aus Parameter abrufen) */
+             if (strcmp(param_rule->source_plugin, rule->target_plugin) == 0 &&
+                 strcmp(param_rule->source_interface, rule->target_interface) == 0 &&
+                 param_rule->source_param_index >= 0 &&
+                 param_rule->source_param_index < state->param_count &&
+                 state->param_ready != NULL && state->param_values != NULL &&
+                 state->param_ready[param_rule->source_param_index] &&
+                 state->param_values[param_rule->source_param_index] != NULL) {
+                 
+                 void* param_value = state->param_values[param_rule->source_param_index];
+                 internal_log_write("INFO", "Triggering rule %zu: %s.%s[%d] -> %s.%s[%d] (getting parameter value)", 
+                              i, param_rule->source_plugin, param_rule->source_interface, param_rule->source_param_index,
+                              param_rule->target_plugin != NULL ? param_rule->target_plugin : "unknown",
+                              param_rule->target_interface != NULL ? param_rule->target_interface : "unknown",
+                              param_rule->target_param_index);
+                 
+                 /* 调用目标接口 / Call target interface / Ziel-Schnittstelle aufrufen */
+                 int call_result = call_target_plugin_interface(param_rule, param_value);
+                 if (call_result == 0) {
+                     internal_log_write("INFO", "Successfully triggered rule %zu for parameter %d", i, param_rule->source_param_index);
+                 } else {
+                     internal_log_write("WARNING", "Failed to trigger rule %zu for parameter %d (error=%d)", i, param_rule->source_param_index, call_result);
+                 }
              }
-        }
+         }
      }
      
      if (state != NULL) {
          state->in_use = 0;
          
-         if (state->param_count > 0 && state->param_ready != NULL && state->param_values != NULL) {
+         /* 如果skip_param_cleanup为1，则跳过参数清理（用于SetGroup处理）/ If skip_param_cleanup is 1, skip parameter cleanup (for SetGroup processing) / Wenn skip_param_cleanup 1 ist, Parameterbereinigung überspringen (für SetGroup-Verarbeitung) */
+         if (!skip_param_cleanup && state->param_count > 0 && state->param_ready != NULL && state->param_values != NULL) {
              for (int i = 0; i < state->param_count; i++) {
                  state->param_ready[i] = 0;
                  state->param_values[i] = NULL;
@@ -870,5 +1159,5 @@ int call_target_plugin_interface(const pointer_transfer_rule_t* rule, void* ptr)
     const char* initial_call_chain[1] = {NULL};
     size_t initial_call_chain_size = 0;
     
-    return call_target_plugin_interface_internal(rule, ptr, 0, initial_call_chain, initial_call_chain_size);
+    return call_target_plugin_interface_internal(rule, ptr, 0, initial_call_chain, initial_call_chain_size, 0);
 }

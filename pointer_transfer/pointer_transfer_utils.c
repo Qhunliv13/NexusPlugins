@@ -492,6 +492,17 @@ int set_parameter_value_from_pointer(struct target_interface_state_s* state, int
         case NXLD_PARAM_TYPE_VARIADIC:
         case NXLD_PARAM_TYPE_ANY:
         case NXLD_PARAM_TYPE_UNKNOWN: {
+            /* 对于未知类型，如果stored_size <= 8，尝试作为整数处理 / For unknown types, if stored_size <= 8, try to handle as integer / Für unbekannte Typen, wenn stored_size <= 8, versuchen als Ganzzahl zu behandeln */
+            if (stored_size > 0 && stored_size <= sizeof(int64_t) && ptr != NULL) {
+                typed_state->param_int_values[param_index] = *(int64_t*)ptr;
+                typed_state->param_values[param_index] = &typed_state->param_int_values[param_index];
+                typed_state->param_ready[param_index] = 1;
+                typed_state->param_sizes[param_index] = stored_size;
+                internal_log_write("INFO", "Stored parameter %d for %s.%s (type=%d, INT64 value: %lld)", 
+                    param_index, plugin_name != NULL ? plugin_name : "unknown", 
+                    interface_name != NULL ? interface_name : "unknown", param_type, (long long)typed_state->param_int_values[param_index]);
+                return 1;
+            }
             typed_state->param_values[param_index] = ptr;
             typed_state->param_ready[param_index] = 1;
             typed_state->param_sizes[param_index] = stored_size > 0 ? stored_size : sizeof(void*);
@@ -501,6 +512,17 @@ int set_parameter_value_from_pointer(struct target_interface_state_s* state, int
             return 1;
         }
         default: {
+            /* 对于未知类型，如果stored_size <= 8，尝试作为整数处理 / For unknown types, if stored_size <= 8, try to handle as integer / Für unbekannte Typen, wenn stored_size <= 8, versuchen als Ganzzahl zu behandeln */
+            if (stored_size > 0 && stored_size <= sizeof(int64_t) && ptr != NULL) {
+                typed_state->param_int_values[param_index] = *(int64_t*)ptr;
+                typed_state->param_values[param_index] = &typed_state->param_int_values[param_index];
+                typed_state->param_ready[param_index] = 1;
+                typed_state->param_sizes[param_index] = stored_size;
+                internal_log_write("INFO", "Stored parameter %d for %s.%s (type=%d, INT64 value: %lld)", 
+                    param_index, plugin_name != NULL ? plugin_name : "unknown", 
+                    interface_name != NULL ? interface_name : "unknown", param_type, (long long)typed_state->param_int_values[param_index]);
+                return 1;
+            }
             typed_state->param_values[param_index] = ptr;
             typed_state->param_ready[param_index] = 1;
             typed_state->param_sizes[param_index] = stored_size > 0 ? stored_size : sizeof(void*);

@@ -608,6 +608,23 @@ POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL CallPlugin(const
                   source_plugin_name, source_interface_name, param_index);
     
     pointer_transfer_context_t* ctx = get_global_context();
+    
+    /* 如果param_index >= 0，尝试从已调用接口的参数状态中获取值 / If param_index >= 0, try to get value from parameter state of already called interface / Wenn param_index >= 0, versuche Wert aus Parameterstatus der bereits aufgerufenen Schnittstelle zu erhalten */
+    void* actual_param_value = param_value;
+    if (param_index >= 0) {
+        target_interface_state_t* source_state = find_interface_state(source_plugin_name, source_interface_name);
+        if (source_state != NULL && source_state->param_ready != NULL && 
+            param_index < source_state->param_count && source_state->param_ready[param_index] &&
+            source_state->param_values != NULL && source_state->param_values[param_index] != NULL) {
+            actual_param_value = source_state->param_values[param_index];
+            internal_log_write("INFO", "CallPlugin: got parameter %d value from interface state for %s.%s", 
+                          param_index, source_plugin_name, source_interface_name);
+        } else {
+            internal_log_write("WARNING", "CallPlugin: failed to get parameter %d value from interface state for %s.%s, using provided param_value", 
+                          param_index, source_plugin_name, source_interface_name);
+        }
+    }
+    
     size_t matched_count = 0;
     size_t success_count = 0;
     
@@ -645,7 +662,7 @@ POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL CallPlugin(const
                                 }
                             }
                             
-                            if (!check_condition(rule->condition, param_value)) {
+                            if (!check_condition(rule->condition, actual_param_value)) {
                                 internal_log_write("INFO", "Transfer rule %zu condition not met, skipping - condition: %s", 
                                             i, rule->condition != NULL ? rule->condition : "none");
                                 continue;
@@ -659,7 +676,7 @@ POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL CallPlugin(const
                                         rule->target_interface != NULL ? rule->target_interface : "unknown",
                                         rule->target_param_index);
                             
-                            int call_result = call_target_plugin_interface(rule, param_value);
+                            int call_result = call_target_plugin_interface(rule, actual_param_value);
                             if (call_result == 0) {
                                 success_count++;
                                 internal_log_write("INFO", "Successfully called target plugin interface");
@@ -685,7 +702,7 @@ POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL CallPlugin(const
                         rule->source_param_index == param_index) {
                         
                         if (rule->transfer_mode == TRANSFER_MODE_UNICAST) {
-                            if (!check_condition(rule->condition, param_value)) {
+                            if (!check_condition(rule->condition, actual_param_value)) {
                                 internal_log_write("INFO", "Transfer rule %zu condition not met, skipping - condition: %s", 
                                             i, rule->condition != NULL ? rule->condition : "none");
                                 continue;
@@ -699,7 +716,7 @@ POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL CallPlugin(const
                                         rule->target_interface != NULL ? rule->target_interface : "unknown",
                                         rule->target_param_index);
                             
-                            int call_result = call_target_plugin_interface(rule, param_value);
+                            int call_result = call_target_plugin_interface(rule, actual_param_value);
                             if (call_result == 0) {
                                 success_count++;
                                 internal_log_write("INFO", "Successfully called target plugin interface");
@@ -762,7 +779,7 @@ POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL CallPlugin(const
                                 }
                             }
                             
-                            if (!check_condition(rule->condition, param_value)) {
+                            if (!check_condition(rule->condition, actual_param_value)) {
                                 internal_log_write("INFO", "Transfer rule %zu condition not met, skipping - condition: %s", 
                                             i, rule->condition != NULL ? rule->condition : "none");
                                 continue;
@@ -776,7 +793,7 @@ POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL CallPlugin(const
                                         rule->target_interface != NULL ? rule->target_interface : "unknown",
                                         rule->target_param_index);
                             
-                            int call_result = call_target_plugin_interface(rule, param_value);
+                            int call_result = call_target_plugin_interface(rule, actual_param_value);
                             if (call_result == 0) {
                                 success_count++;
                                 internal_log_write("INFO", "Successfully called target plugin interface");
@@ -802,7 +819,7 @@ POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL CallPlugin(const
                         rule->source_param_index == param_index) {
                         
                         if (rule->transfer_mode == TRANSFER_MODE_UNICAST) {
-                            if (!check_condition(rule->condition, param_value)) {
+                            if (!check_condition(rule->condition, actual_param_value)) {
                                 internal_log_write("INFO", "Transfer rule %zu condition not met, skipping - condition: %s", 
                                             i, rule->condition != NULL ? rule->condition : "none");
                                 continue;
@@ -816,7 +833,7 @@ POINTER_TRANSFER_PLUGIN_EXPORT int POINTER_TRANSFER_PLUGIN_CALL CallPlugin(const
                                         rule->target_interface != NULL ? rule->target_interface : "unknown",
                                         rule->target_param_index);
                             
-                            int call_result = call_target_plugin_interface(rule, param_value);
+                            int call_result = call_target_plugin_interface(rule, actual_param_value);
                             if (call_result == 0) {
                                 success_count++;
                                 internal_log_write("INFO", "Successfully called target plugin interface");
